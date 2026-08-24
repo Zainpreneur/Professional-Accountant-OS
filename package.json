@@ -1,0 +1,20 @@
+{
+  "name": "professional-accountant-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Professional Accountant OS - multi-tenant CA practice operating system",
+  "scripts": {
+    "dev:api": "pnpm --filter @accountant-os/api dev",
+    "dev:web": "pnpm --filter @accountant-os/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "db:generate": "pnpm --filter @accountant-os/db generate",
+    "db:migrate": "pnpm --filter @accountant-os/db migrate",
+    "db:seed": "pnpm --filter @accountant-os/db seed"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

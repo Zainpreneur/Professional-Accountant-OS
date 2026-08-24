@@ -1,0 +1,597 @@
+// Professional Accountant OS - Phase 1 data model
+// Covers: multi-tenancy, RBAC, client onboarding, chart of accounts,
+// general ledger (double-entry), AR/AP (invoices/bills), payments,
+// documents, and audit trail. See docs/SRS.md for the full target scope
+// and docs/ARCHITECTURE.md for what is implemented vs. planned.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity, firm, tenancy (SRS 3, 5, 53-55)
+// ---------------------------------------------------------------------------
+
+model Firm {
+  id        String   @id @default(uuid())
+  name      String
+  legalName String?
+  country   String   @default("SA")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  clients   Client[]
+  roles     Role[]
+  documents Document[]
+  auditLogs AuditLog[]
+
+  @@map("firms")
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+model User {
+  id           String     @id @default(uuid())
+  firmId       String
+  firm         Firm       @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  email        String
+  passwordHash String
+  firstName    String
+  lastName     String
+  status       UserStatus @default(INVITED)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  userRoles       UserRole[]
+  createdJournals Journal[]      @relation("JournalCreatedBy")
+  postedJournals  Journal[]      @relation("JournalPostedBy")
+  documents       Document[]
+  auditLogs       AuditLog[]
+  clientMembers   ClientMember[]
+
+  @@unique([firmId, email])
+  @@map("users")
+}
+
+// A Role bundles a set of permission codes (see apps/api/src/rbac/permissions.ts
+// for the canonical list, mirroring SRS 54). A Role with firmId = null is a
+// system-defined role available to every firm; a firm can also define custom
+// roles.
+model Role {
+  id          String   @id @default(uuid())
+  firmId      String?
+  firm        Firm?    @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  permissions String[]
+  createdAt   DateTime @default(now())
+
+  userRoles UserRole[]
+
+  @@unique([firmId, name])
+  @@map("roles")
+}
+
+// Assigns a Role to a User, optionally scoped to a single Client (e.g. a
+// client-portal user only has CLIENT_ADMIN on their own client). A null
+// clientId means the role applies firm-wide.
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  clientId  String?
+  client    Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, roleId, clientId])
+  @@map("user_roles")
+}
+
+// ---------------------------------------------------------------------------
+// Clients & engagements (SRS 6, 77)
+// ---------------------------------------------------------------------------
+
+enum ClientStatus {
+  ONBOARDING
+  ACTIVE
+  SUSPENDED
+  OFFBOARDED
+}
+
+model Client {
+  id                     String       @id @default(uuid())
+  firmId                 String
+  firm                   Firm         @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  legalName              String
+  tradingName            String?
+  entityType              String?
+  businessCategory       String?
+  jurisdiction           String       @default("SA")
+  taxRegistrationNumber  String?
+  baseCurrency           String       @default("SAR")
+  status                 ClientStatus @default(ONBOARDING)
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  engagements     Engagement[]
+  accounts        ChartOfAccount[]
+  fiscalYears     FiscalYear[]
+  accountingPeriods AccountingPeriod[]
+  journals        Journal[]
+  customers       Customer[]
+  suppliers       Supplier[]
+  invoices        Invoice[]
+  bills           Bill[]
+  payments        Payment[]
+  documents       Document[]
+  auditLogs       AuditLog[]
+  userRoles       UserRole[]
+  members         ClientMember[]
+
+  @@unique([firmId, legalName])
+  @@map("clients")
+}
+
+// A client-portal user's membership in a client (distinct from firm staff).
+// Mirrors SRS 3.6/3.7 (Client Administrator / Client Employee).
+model ClientMember {
+  id        String   @id @default(uuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String?
+  createdAt DateTime @default(now())
+
+  @@unique([clientId, userId])
+  @@map("client_members")
+}
+
+enum EngagementStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Engagement {
+  id          String           @id @default(uuid())
+  clientId    String
+  client      Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  serviceType String
+  periodStart DateTime
+  periodEnd   DateTime
+  status      EngagementStatus @default(PLANNED)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@map("engagements")
+}
+
+// ---------------------------------------------------------------------------
+// Accounting core: chart of accounts, fiscal calendar (SRS 11-13)
+// ---------------------------------------------------------------------------
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum ControlAccountType {
+  ACCOUNTS_RECEIVABLE
+  ACCOUNTS_PAYABLE
+  BANK
+  CASH
+  VAT_OUTPUT
+  VAT_INPUT
+}
+
+model ChartOfAccount {
+  id                    String              @id @default(uuid())
+  clientId              String
+  client                Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  code                  String
+  name                  String
+  type                  AccountType
+  subtype               String?
+  parentId              String?
+  parent                ChartOfAccount?     @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children              ChartOfAccount[]    @relation("AccountHierarchy")
+  normalBalance         NormalBalance
+  currency              String              @default("SAR")
+  isControlAccount      Boolean             @default(false)
+  controlAccountType    ControlAccountType?
+  reconciliationRequired Boolean            @default(false)
+  active                Boolean             @default(true)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  journalLines JournalLine[]
+  customersAr  Customer[]        @relation("CustomerArAccount")
+  suppliersAp  Supplier[]        @relation("SupplierApAccount")
+  invoiceLines InvoiceLine[]
+  billLines    BillLine[]
+  payments     Payment[]
+
+  @@unique([clientId, code])
+  @@map("chart_of_accounts")
+}
+
+enum PeriodStatus {
+  OPEN
+  LOCKED
+  CLOSED
+}
+
+model FiscalYear {
+  id        String       @id @default(uuid())
+  clientId  String
+  client    Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  status    PeriodStatus @default(OPEN)
+
+  periods AccountingPeriod[]
+
+  @@unique([clientId, name])
+  @@map("fiscal_years")
+}
+
+model AccountingPeriod {
+  id           String       @id @default(uuid())
+  clientId     String
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fiscalYearId String
+  fiscalYear   FiscalYear   @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
+  name         String
+  startDate    DateTime
+  endDate      DateTime
+  status       PeriodStatus @default(OPEN)
+
+  journals Journal[]
+
+  @@unique([clientId, name])
+  @@map("accounting_periods")
+}
+
+// ---------------------------------------------------------------------------
+// General ledger: journals & lines (SRS 11, 13, 65)
+// ---------------------------------------------------------------------------
+
+enum JournalSource {
+  MANUAL
+  SALES
+  PURCHASES
+  PAYMENT
+  RECEIPT
+  SYSTEM
+}
+
+enum JournalStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+model Journal {
+  id            String        @id @default(uuid())
+  clientId      String
+  client        Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  journalNumber String
+  date          DateTime
+  periodId      String
+  period        AccountingPeriod @relation(fields: [periodId], references: [id])
+  source        JournalSource @default(MANUAL)
+  sourceType    String?
+  sourceId      String?
+  description   String?
+  status        JournalStatus @default(DRAFT)
+
+  createdById String
+  createdBy   User    @relation("JournalCreatedBy", fields: [createdById], references: [id])
+  postedById  String?
+  postedBy    User?   @relation("JournalPostedBy", fields: [postedById], references: [id])
+  postedAt    DateTime?
+
+  reversalOfId String?
+  reversalOf   Journal?  @relation("JournalReversal", fields: [reversalOfId], references: [id])
+  reversedBy   Journal[] @relation("JournalReversal")
+
+  createdAt DateTime @default(now())
+
+  lines    JournalLine[]
+  invoice  Invoice?
+  bill     Bill?
+  payment  Payment?
+
+  @@unique([clientId, journalNumber])
+  @@map("journals")
+}
+
+model JournalLine {
+  id          String          @id @default(uuid())
+  journalId   String
+  journal     Journal         @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     ChartOfAccount  @relation(fields: [accountId], references: [id])
+  debit       Decimal         @default(0) @db.Decimal(18, 2)
+  credit      Decimal         @default(0) @db.Decimal(18, 2)
+  description String?
+  lineNumber  Int
+
+  @@map("journal_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Commercial master data (SRS 14-15)
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id          String   @id @default(uuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  code        String
+  name        String
+  email       String?
+  phone       String?
+  taxNumber   String?
+  creditLimit Decimal? @db.Decimal(18, 2)
+  arAccountId String?
+  arAccount   ChartOfAccount? @relation("CustomerArAccount", fields: [arAccountId], references: [id])
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  invoices Invoice[]
+  payments Payment[]
+
+  @@unique([clientId, code])
+  @@map("customers")
+}
+
+model Supplier {
+  id          String   @id @default(uuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  code        String
+  name        String
+  email       String?
+  phone       String?
+  taxNumber   String?
+  apAccountId String?
+  apAccount   ChartOfAccount? @relation("SupplierApAccount", fields: [apAccountId], references: [id])
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  bills    Bill[]
+  payments Payment[]
+
+  @@unique([clientId, code])
+  @@map("suppliers")
+}
+
+// ---------------------------------------------------------------------------
+// Sales / AR (SRS 14, 18)
+// ---------------------------------------------------------------------------
+
+enum InvoiceStatus {
+  DRAFT
+  POSTED
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  clientId      String
+  client        Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  customerId    String
+  customer      Customer      @relation(fields: [customerId], references: [id])
+  invoiceNumber String
+  date          DateTime
+  dueDate       DateTime
+  currency      String        @default("SAR")
+  status        InvoiceStatus @default(DRAFT)
+  subtotal      Decimal       @default(0) @db.Decimal(18, 2)
+  taxTotal      Decimal       @default(0) @db.Decimal(18, 2)
+  total         Decimal       @default(0) @db.Decimal(18, 2)
+  amountPaid    Decimal       @default(0) @db.Decimal(18, 2)
+  notes         String?
+  journalId     String?       @unique
+  journal       Journal?      @relation(fields: [journalId], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  lines       InvoiceLine[]
+  allocations PaymentAllocation[]
+
+  @@unique([clientId, invoiceNumber])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id               String         @id @default(uuid())
+  invoiceId        String
+  invoice          Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description      String
+  quantity         Decimal        @default(1) @db.Decimal(18, 4)
+  unitPrice        Decimal        @db.Decimal(18, 2)
+  taxRate          Decimal        @default(0) @db.Decimal(5, 2)
+  lineTotal        Decimal        @db.Decimal(18, 2)
+  revenueAccountId String
+  revenueAccount   ChartOfAccount @relation(fields: [revenueAccountId], references: [id])
+  lineNumber       Int
+
+  @@map("invoice_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Purchases / AP (SRS 15, 19)
+// ---------------------------------------------------------------------------
+
+enum BillStatus {
+  DRAFT
+  POSTED
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+model Bill {
+  id         String     @id @default(uuid())
+  clientId   String
+  client     Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  supplierId String
+  supplier   Supplier   @relation(fields: [supplierId], references: [id])
+  billNumber String
+  date       DateTime
+  dueDate    DateTime
+  currency   String     @default("SAR")
+  status     BillStatus @default(DRAFT)
+  subtotal   Decimal    @default(0) @db.Decimal(18, 2)
+  taxTotal   Decimal    @default(0) @db.Decimal(18, 2)
+  total      Decimal    @default(0) @db.Decimal(18, 2)
+  amountPaid Decimal    @default(0) @db.Decimal(18, 2)
+  notes      String?
+  journalId  String?    @unique
+  journal    Journal?   @relation(fields: [journalId], references: [id])
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  lines       BillLine[]
+  allocations PaymentAllocation[]
+
+  @@unique([clientId, billNumber])
+  @@map("bills")
+}
+
+model BillLine {
+  id               String         @id @default(uuid())
+  billId           String
+  bill             Bill           @relation(fields: [billId], references: [id], onDelete: Cascade)
+  description      String
+  quantity         Decimal        @default(1) @db.Decimal(18, 4)
+  unitPrice        Decimal        @db.Decimal(18, 2)
+  taxRate          Decimal        @default(0) @db.Decimal(5, 2)
+  lineTotal        Decimal        @db.Decimal(18, 2)
+  expenseAccountId String
+  expenseAccount   ChartOfAccount @relation(fields: [expenseAccountId], references: [id])
+  lineNumber       Int
+
+  @@map("bill_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Payments (SRS 14-17)
+// ---------------------------------------------------------------------------
+
+enum PaymentType {
+  RECEIPT
+  PAYMENT
+}
+
+model Payment {
+  id            String         @id @default(uuid())
+  clientId      String
+  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  type          PaymentType
+  customerId    String?
+  customer      Customer?      @relation(fields: [customerId], references: [id])
+  supplierId    String?
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
+  date          DateTime
+  amount        Decimal        @db.Decimal(18, 2)
+  bankAccountId String
+  bankAccount   ChartOfAccount @relation(fields: [bankAccountId], references: [id])
+  method        String?
+  reference     String?
+  journalId     String?        @unique
+  journal       Journal?       @relation(fields: [journalId], references: [id])
+  createdAt     DateTime       @default(now())
+
+  allocations PaymentAllocation[]
+
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id        String   @id @default(uuid())
+  paymentId String
+  payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
+  billId    String?
+  bill      Bill?    @relation(fields: [billId], references: [id])
+  amount    Decimal  @db.Decimal(18, 2)
+
+  @@map("payment_allocations")
+}
+
+// ---------------------------------------------------------------------------
+// Documents (SRS 40-41)
+// ---------------------------------------------------------------------------
+
+model Document {
+  id                String   @id @default(uuid())
+  firmId            String
+  firm              Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  clientId          String?
+  client            Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  uploadedById      String
+  uploadedBy        User     @relation(fields: [uploadedById], references: [id])
+  fileName          String
+  mimeType          String
+  sizeBytes         Int
+  storageKey        String
+  category          String?
+  relatedEntityType String?
+  relatedEntityId   String?
+  createdAt         DateTime @default(now())
+
+  @@map("documents")
+}
+
+// ---------------------------------------------------------------------------
+// Audit trail (SRS 56)
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  firmId     String
+  firm       Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  clientId   String?
+  client     Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  @@index([firmId, entityType, entityId])
+  @@map("audit_logs")
+}

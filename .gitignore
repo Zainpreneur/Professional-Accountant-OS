@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.next/
+*.tsbuildinfo
+.env
+.env.local
+.env.test
+uploads/
+.DS_Store
+coverage/
+pnpm-lock.yaml.bak
+packages/db/generated/
+.pgdata/
+*.log
