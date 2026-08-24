@@ -12,6 +12,13 @@ import { PurchasesModule } from "./purchases/purchases.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { ReportsModule } from "./reports/reports.module";
 import { DocumentsModule } from "./documents/documents.module";
+import { EmployeesModule } from "./employees/employees.module";
+import { FixedAssetsModule } from "./fixed-assets/fixed-assets.module";
+import { InventoryModule } from "./inventory/inventory.module";
+import { ExpensesModule } from "./expenses/expenses.module";
+import { PayrollModule } from "./payroll/payroll.module";
+import { BankingModule } from "./banking/banking.module";
+import { IntelligenceModule } from "./intelligence/intelligence.module";
 
 @Module({
   imports: [
@@ -28,6 +35,13 @@ import { DocumentsModule } from "./documents/documents.module";
     PaymentsModule,
     ReportsModule,
     DocumentsModule,
+    EmployeesModule,
+    FixedAssetsModule,
+    InventoryModule,
+    ExpensesModule,
+    PayrollModule,
+    BankingModule,
+    IntelligenceModule,
   ],
 })
 export class AppModule {}

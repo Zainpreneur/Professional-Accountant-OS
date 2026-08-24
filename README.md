@@ -7,9 +7,10 @@ accounting, tax/VAT/Zakat compliance, audit, and professional reporting.
 Jurisdiction-configurable, with Saudi Arabia (ZATCA e-invoicing, VAT, Zakat) as a first-class
 configuration.
 
-This repository currently implements **Phase 1 (Professional Foundation)**: multi-tenancy, RBAC,
-client onboarding, a double-entry accounting core, AR/AP, payments, reporting, documents, and an
-audit trail — as real, running, tested code. See
+This repository currently implements **Phase 1 (Professional Foundation)** and **Phase 2
+(Accounting Automation)**: multi-tenancy, RBAC, client onboarding, a double-entry accounting core,
+AR/AP, payments, fixed assets, inventory, expense claims, payroll, bank reconciliation, document
+field extraction, and rule-based posting suggestions — as real, running, tested code. See
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for exactly what's built vs. the full roadmap.
 
 ## Documentation

@@ -1,54 +1,15 @@
 import { PrismaClient } from "../generated/client";
 import * as bcrypt from "bcryptjs";
+// The canonical permission/role definitions live in the API package
+// (apps/api/src/rbac/permissions.ts). Importing them here - rather than
+// keeping a second hand-copied list - means a new permission is seeded
+// correctly the moment it's added, with nothing to keep in sync.
+import { SYSTEM_ROLES } from "../../../apps/api/src/rbac/permissions";
 
 // Seeds a demo firm with a demo client, ready to explore the API/UI:
 //   firm owner login: owner@demo-firm.test / Password123!
 // Run with `pnpm db:seed`.
 const prisma = new PrismaClient();
-
-const SYSTEM_ROLES: Record<string, { description: string; permissions: string[] }> = {
-  FIRM_OWNER: {
-    description: "Firm owner / managing partner - full control (SRS 3.1)",
-    permissions: [
-      "MANAGE_FIRM",
-      "MANAGE_USERS",
-      "MANAGE_ROLES",
-      "VIEW_CLIENT",
-      "CREATE_CLIENT",
-      "EDIT_CLIENT",
-      "MANAGE_ENGAGEMENTS",
-      "MANAGE_MASTER_DATA",
-      "CREATE_TRANSACTION",
-      "EDIT_TRANSACTION",
-      "POST_TRANSACTION",
-      "APPROVE_TRANSACTION",
-      "MANAGE_PERIODS",
-      "MANAGE_SALES",
-      "MANAGE_PURCHASES",
-      "MANAGE_PAYMENTS",
-      "VIEW_REPORTS",
-      "MANAGE_DOCUMENTS",
-      "VIEW_DOCUMENTS",
-      "VIEW_AUDIT_TRAIL",
-    ],
-  },
-  ACCOUNTANT: {
-    description: "Bookkeeping, reconciliation, reporting (SRS 3.3)",
-    permissions: [
-      "VIEW_CLIENT",
-      "MANAGE_MASTER_DATA",
-      "CREATE_TRANSACTION",
-      "EDIT_TRANSACTION",
-      "POST_TRANSACTION",
-      "MANAGE_SALES",
-      "MANAGE_PURCHASES",
-      "MANAGE_PAYMENTS",
-      "VIEW_REPORTS",
-      "MANAGE_DOCUMENTS",
-      "VIEW_DOCUMENTS",
-    ],
-  },
-};
 
 const STANDARD_COA_TEMPLATE = [
   acct("1000", "Cash on Hand", "ASSET", "Cash", "DEBIT", true, "CASH"),

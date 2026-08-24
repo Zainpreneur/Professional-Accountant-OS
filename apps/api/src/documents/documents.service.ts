@@ -68,4 +68,12 @@ export class DocumentsService {
     const stream = createReadStream(join(STORAGE_ROOT, document.storageKey));
     return { document, stream };
   }
+
+  // Used by DocumentIntelligenceService to read the raw bytes for
+  // extraction, rather than streaming to an HTTP response.
+  async getDocumentAndPath(clientId: string, documentId: string) {
+    const document = await this.prisma.document.findUnique({ where: { id: documentId } });
+    if (!document || document.clientId !== clientId) throw new NotFoundException("Document not found");
+    return { document, absolutePath: join(STORAGE_ROOT, document.storageKey) };
+  }
 }

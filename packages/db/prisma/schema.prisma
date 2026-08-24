@@ -53,12 +53,13 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  userRoles       UserRole[]
-  createdJournals Journal[]      @relation("JournalCreatedBy")
-  postedJournals  Journal[]      @relation("JournalPostedBy")
-  documents       Document[]
-  auditLogs       AuditLog[]
-  clientMembers   ClientMember[]
+  userRoles            UserRole[]
+  createdJournals      Journal[]             @relation("JournalCreatedBy")
+  postedJournals       Journal[]             @relation("JournalPostedBy")
+  documents            Document[]
+  auditLogs            AuditLog[]
+  clientMembers        ClientMember[]
+  bankStatementImports BankStatementImport[]
 
   @@unique([firmId, email])
   @@map("users")
@@ -112,34 +113,44 @@ enum ClientStatus {
 }
 
 model Client {
-  id                     String       @id @default(uuid())
-  firmId                 String
-  firm                   Firm         @relation(fields: [firmId], references: [id], onDelete: Cascade)
-  legalName              String
-  tradingName            String?
-  entityType              String?
-  businessCategory       String?
-  jurisdiction           String       @default("SA")
-  taxRegistrationNumber  String?
-  baseCurrency           String       @default("SAR")
-  status                 ClientStatus @default(ONBOARDING)
-  createdAt              DateTime     @default(now())
-  updatedAt              DateTime     @updatedAt
+  id                    String       @id @default(uuid())
+  firmId                String
+  firm                  Firm         @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  legalName             String
+  tradingName           String?
+  entityType            String?
+  businessCategory      String?
+  jurisdiction          String       @default("SA")
+  taxRegistrationNumber String?
+  baseCurrency          String       @default("SAR")
+  status                ClientStatus @default(ONBOARDING)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
-  engagements     Engagement[]
-  accounts        ChartOfAccount[]
-  fiscalYears     FiscalYear[]
-  accountingPeriods AccountingPeriod[]
-  journals        Journal[]
-  customers       Customer[]
-  suppliers       Supplier[]
-  invoices        Invoice[]
-  bills           Bill[]
-  payments        Payment[]
-  documents       Document[]
-  auditLogs       AuditLog[]
-  userRoles       UserRole[]
-  members         ClientMember[]
+  engagements          Engagement[]
+  accounts             ChartOfAccount[]
+  fiscalYears          FiscalYear[]
+  accountingPeriods    AccountingPeriod[]
+  journals             Journal[]
+  customers            Customer[]
+  suppliers            Supplier[]
+  invoices             Invoice[]
+  bills                Bill[]
+  payments             Payment[]
+  documents            Document[]
+  auditLogs            AuditLog[]
+  userRoles            UserRole[]
+  members              ClientMember[]
+  employees            Employee[]
+  fixedAssets          FixedAsset[]
+  depreciationRuns     DepreciationRun[]
+  products             Product[]
+  warehouses           Warehouse[]
+  stockMovements       StockMovement[]
+  expenseClaims        ExpenseClaim[]
+  payrollRuns          PayrollRun[]
+  bankStatementImports BankStatementImport[]
+  bankReconciliations  BankReconciliation[]
 
   @@unique([firmId, legalName])
   @@map("clients")
@@ -208,31 +219,40 @@ enum ControlAccountType {
 }
 
 model ChartOfAccount {
-  id                    String              @id @default(uuid())
-  clientId              String
-  client                Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  code                  String
-  name                  String
-  type                  AccountType
-  subtype               String?
-  parentId              String?
-  parent                ChartOfAccount?     @relation("AccountHierarchy", fields: [parentId], references: [id])
-  children              ChartOfAccount[]    @relation("AccountHierarchy")
-  normalBalance         NormalBalance
-  currency              String              @default("SAR")
-  isControlAccount      Boolean             @default(false)
-  controlAccountType    ControlAccountType?
-  reconciliationRequired Boolean            @default(false)
-  active                Boolean             @default(true)
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
+  id                     String              @id @default(uuid())
+  clientId               String
+  client                 Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  code                   String
+  name                   String
+  type                   AccountType
+  subtype                String?
+  parentId               String?
+  parent                 ChartOfAccount?     @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children               ChartOfAccount[]    @relation("AccountHierarchy")
+  normalBalance          NormalBalance
+  currency               String              @default("SAR")
+  isControlAccount       Boolean             @default(false)
+  controlAccountType     ControlAccountType?
+  reconciliationRequired Boolean             @default(false)
+  active                 Boolean             @default(true)
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
 
-  journalLines JournalLine[]
-  customersAr  Customer[]        @relation("CustomerArAccount")
-  suppliersAp  Supplier[]        @relation("SupplierApAccount")
-  invoiceLines InvoiceLine[]
-  billLines    BillLine[]
-  payments     Payment[]
+  journalLines                  JournalLine[]
+  customersAr                   Customer[]            @relation("CustomerArAccount")
+  suppliersAp                   Supplier[]            @relation("SupplierApAccount")
+  invoiceLines                  InvoiceLine[]
+  billLines                     BillLine[]
+  payments                      Payment[]
+  assetsAsAssetAccount          FixedAsset[]          @relation("AssetAssetAccount")
+  assetsAsDepreciationExpense   FixedAsset[]          @relation("AssetDepreciationExpenseAccount")
+  assetsAsAccumulatedDep        FixedAsset[]          @relation("AssetAccumulatedDepreciationAccount")
+  productsAsInventoryAccount    Product[]             @relation("ProductInventoryAccount")
+  productsAsCogsAccount         Product[]             @relation("ProductCogsAccount")
+  expenseClaimLines             ExpenseClaimLine[]
+  expenseClaimsAsPaymentAccount ExpenseClaim[]        @relation("ExpenseClaimPaymentAccount")
+  bankStatementImports          BankStatementImport[]
+  bankReconciliations           BankReconciliation[]
 
   @@unique([clientId, code])
   @@map("chart_of_accounts")
@@ -296,23 +316,23 @@ enum JournalStatus {
 }
 
 model Journal {
-  id            String        @id @default(uuid())
+  id            String           @id @default(uuid())
   clientId      String
-  client        Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client        Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
   journalNumber String
   date          DateTime
   periodId      String
   period        AccountingPeriod @relation(fields: [periodId], references: [id])
-  source        JournalSource @default(MANUAL)
+  source        JournalSource    @default(MANUAL)
   sourceType    String?
   sourceId      String?
   description   String?
-  status        JournalStatus @default(DRAFT)
+  status        JournalStatus    @default(DRAFT)
 
   createdById String
-  createdBy   User    @relation("JournalCreatedBy", fields: [createdById], references: [id])
+  createdBy   User      @relation("JournalCreatedBy", fields: [createdById], references: [id])
   postedById  String?
-  postedBy    User?   @relation("JournalPostedBy", fields: [postedById], references: [id])
+  postedBy    User?     @relation("JournalPostedBy", fields: [postedById], references: [id])
   postedAt    DateTime?
 
   reversalOfId String?
@@ -321,25 +341,35 @@ model Journal {
 
   createdAt DateTime @default(now())
 
-  lines    JournalLine[]
-  invoice  Invoice?
-  bill     Bill?
-  payment  Payment?
+  lines                 JournalLine[]
+  invoice               Invoice?
+  bill                  Bill?
+  payment               Payment?
+  fixedAssetAcquisition FixedAsset?      @relation("FixedAssetAcquisitionJournal")
+  fixedAssetDisposal    FixedAsset?      @relation("FixedAssetDisposalJournal")
+  depreciationRun       DepreciationRun?
+  stockMovement         StockMovement?
+  expenseClaim          ExpenseClaim?
+  payrollRun            PayrollRun?
 
   @@unique([clientId, journalNumber])
   @@map("journals")
 }
 
 model JournalLine {
-  id          String          @id @default(uuid())
-  journalId   String
-  journal     Journal         @relation(fields: [journalId], references: [id], onDelete: Cascade)
-  accountId   String
-  account     ChartOfAccount  @relation(fields: [accountId], references: [id])
-  debit       Decimal         @default(0) @db.Decimal(18, 2)
-  credit      Decimal         @default(0) @db.Decimal(18, 2)
-  description String?
-  lineNumber  Int
+  id                String             @id @default(uuid())
+  journalId         String
+  journal           Journal            @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  accountId         String
+  account           ChartOfAccount     @relation(fields: [accountId], references: [id])
+  debit             Decimal            @default(0) @db.Decimal(18, 2)
+  credit            Decimal            @default(0) @db.Decimal(18, 2)
+  description       String?
+  lineNumber        Int
+  // Bank reconciliation (SRS 16, 42): set once this line has been matched
+  // to a bank statement line, so unmatched queues can filter cheaply.
+  reconciled        Boolean            @default(false)
+  bankStatementLine BankStatementLine?
 
   @@map("journal_lines")
 }
@@ -349,19 +379,19 @@ model JournalLine {
 // ---------------------------------------------------------------------------
 
 model Customer {
-  id          String   @id @default(uuid())
+  id          String          @id @default(uuid())
   clientId    String
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client      Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   code        String
   name        String
   email       String?
   phone       String?
   taxNumber   String?
-  creditLimit Decimal? @db.Decimal(18, 2)
+  creditLimit Decimal?        @db.Decimal(18, 2)
   arAccountId String?
   arAccount   ChartOfAccount? @relation("CustomerArAccount", fields: [arAccountId], references: [id])
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  active      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
 
   invoices Invoice[]
   payments Payment[]
@@ -371,9 +401,9 @@ model Customer {
 }
 
 model Supplier {
-  id          String   @id @default(uuid())
+  id          String          @id @default(uuid())
   clientId    String
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client      Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   code        String
   name        String
   email       String?
@@ -381,8 +411,8 @@ model Supplier {
   taxNumber   String?
   apAccountId String?
   apAccount   ChartOfAccount? @relation("SupplierApAccount", fields: [apAccountId], references: [id])
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  active      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
 
   bills    Bill[]
   payments Payment[]
@@ -570,6 +600,8 @@ model Document {
   relatedEntityId   String?
   createdAt         DateTime @default(now())
 
+  extraction DocumentExtraction?
+
   @@map("documents")
 }
 
@@ -594,4 +626,414 @@ model AuditLog {
 
   @@index([firmId, entityType, entityId])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 - Accounting automation (docs/ARCHITECTURE.md roadmap)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// HR master data (shared by Expense Management and Payroll)
+// ---------------------------------------------------------------------------
+
+enum EmployeeStatus {
+  ACTIVE
+  TERMINATED
+}
+
+model Employee {
+  id              String         @id @default(uuid())
+  clientId        String
+  client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  employeeCode    String
+  firstName       String
+  lastName        String
+  email           String?
+  jobTitle        String?
+  hireDate        DateTime
+  terminationDate DateTime?
+  baseSalary      Decimal        @default(0) @db.Decimal(18, 2)
+  status          EmployeeStatus @default(ACTIVE)
+  createdAt       DateTime       @default(now())
+
+  expenseClaims ExpenseClaim[]
+  payslips      Payslip[]
+
+  @@unique([clientId, employeeCode])
+  @@map("employees")
+}
+
+// ---------------------------------------------------------------------------
+// Fixed Assets (SRS 21)
+// ---------------------------------------------------------------------------
+
+enum AssetStatus {
+  ACTIVE
+  DISPOSED
+}
+
+enum DepreciationMethod {
+  STRAIGHT_LINE
+}
+
+// Depreciation and disposal are computed/posted by FixedAssetsService, never
+// edited by hand - `accumulatedDepreciation` is a running total maintained
+// exclusively by posted DepreciationRun / disposal journals (SRS 65: no
+// destructive edits to what the ledger already says happened).
+model FixedAsset {
+  id                      String             @id @default(uuid())
+  clientId                String
+  client                  Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  assetCode               String
+  name                    String
+  category                String?
+  acquisitionDate         DateTime
+  acquisitionCost         Decimal            @db.Decimal(18, 2)
+  salvageValue            Decimal            @default(0) @db.Decimal(18, 2)
+  usefulLifeMonths        Int
+  depreciationMethod      DepreciationMethod @default(STRAIGHT_LINE)
+  accumulatedDepreciation Decimal            @default(0) @db.Decimal(18, 2)
+  status                  AssetStatus        @default(ACTIVE)
+
+  assetAccountId                   String
+  assetAccount                     ChartOfAccount @relation("AssetAssetAccount", fields: [assetAccountId], references: [id])
+  depreciationExpenseAccountId     String
+  depreciationExpenseAccount       ChartOfAccount @relation("AssetDepreciationExpenseAccount", fields: [depreciationExpenseAccountId], references: [id])
+  accumulatedDepreciationAccountId String
+  accumulatedDepreciationAccount   ChartOfAccount @relation("AssetAccumulatedDepreciationAccount", fields: [accumulatedDepreciationAccountId], references: [id])
+
+  acquisitionJournalId String?  @unique
+  acquisitionJournal   Journal? @relation("FixedAssetAcquisitionJournal", fields: [acquisitionJournalId], references: [id])
+
+  disposalDate      DateTime?
+  disposalProceeds  Decimal?  @db.Decimal(18, 2)
+  disposalJournalId String?   @unique
+  disposalJournal   Journal?  @relation("FixedAssetDisposalJournal", fields: [disposalJournalId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  depreciationEntries DepreciationEntry[]
+
+  @@unique([clientId, assetCode])
+  @@map("fixed_assets")
+}
+
+enum DepreciationRunStatus {
+  DRAFT
+  POSTED
+}
+
+// One run covers every ACTIVE asset for a client for one period, posting a
+// single journal (SRS 21, 70): Debit each asset's depreciation expense
+// account, Credit its accumulated depreciation account.
+model DepreciationRun {
+  id          String                @id @default(uuid())
+  clientId    String
+  client      Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  periodLabel String
+  runDate     DateTime
+  status      DepreciationRunStatus @default(DRAFT)
+  totalAmount Decimal               @default(0) @db.Decimal(18, 2)
+  journalId   String?               @unique
+  journal     Journal?              @relation(fields: [journalId], references: [id])
+  createdAt   DateTime              @default(now())
+
+  entries DepreciationEntry[]
+
+  @@unique([clientId, periodLabel])
+  @@map("depreciation_runs")
+}
+
+model DepreciationEntry {
+  id      String          @id @default(uuid())
+  runId   String
+  run     DepreciationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  assetId String
+  asset   FixedAsset      @relation(fields: [assetId], references: [id])
+  amount  Decimal         @db.Decimal(18, 2)
+
+  @@unique([runId, assetId])
+  @@map("depreciation_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Inventory (SRS 20)
+// ---------------------------------------------------------------------------
+
+model Product {
+  id                 String         @id @default(uuid())
+  clientId           String
+  client             Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sku                String
+  name               String
+  unitOfMeasure      String         @default("unit")
+  inventoryAccountId String
+  inventoryAccount   ChartOfAccount @relation("ProductInventoryAccount", fields: [inventoryAccountId], references: [id])
+  cogsAccountId      String
+  cogsAccount        ChartOfAccount @relation("ProductCogsAccount", fields: [cogsAccountId], references: [id])
+  active             Boolean        @default(true)
+  createdAt          DateTime       @default(now())
+
+  stockLevels ProductStock[]
+  movements   StockMovement[]
+
+  @@unique([clientId, sku])
+  @@map("products")
+}
+
+model Warehouse {
+  id       String  @id @default(uuid())
+  clientId String
+  client   Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  code     String
+  name     String
+  active   Boolean @default(true)
+
+  stockLevels ProductStock[]
+  movements   StockMovement[]
+
+  @@unique([clientId, code])
+  @@map("warehouses")
+}
+
+// Running quantity/weighted-average-cost per product per warehouse,
+// maintained exclusively by StockMovementsService as each movement posts.
+model ProductStock {
+  id             String    @id @default(uuid())
+  productId      String
+  product        Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  warehouseId    String
+  warehouse      Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  quantityOnHand Decimal   @default(0) @db.Decimal(18, 4)
+  averageCost    Decimal   @default(0) @db.Decimal(18, 4)
+
+  @@unique([productId, warehouseId])
+  @@map("product_stock")
+}
+
+enum StockMovementType {
+  RECEIPT
+  ISSUE
+  ADJUSTMENT
+}
+
+// Every movement posts its own journal (SRS 20, 74): a RECEIPT debits
+// inventory (using its own unit cost, which updates the weighted average);
+// an ISSUE credits inventory and debits COGS at the current weighted
+// average; an ADJUSTMENT moves inventory to/from a suspense-style
+// adjustment account so shrinkage/found-stock is always traceable.
+model StockMovement {
+  id          String            @id @default(uuid())
+  clientId    String
+  client      Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product           @relation(fields: [productId], references: [id])
+  warehouseId String
+  warehouse   Warehouse         @relation(fields: [warehouseId], references: [id])
+  type        StockMovementType
+  date        DateTime
+  quantity    Decimal           @db.Decimal(18, 4)
+  unitCost    Decimal           @db.Decimal(18, 4)
+  totalCost   Decimal           @db.Decimal(18, 2)
+  reference   String?
+  journalId   String?           @unique
+  journal     Journal?          @relation(fields: [journalId], references: [id])
+  createdAt   DateTime          @default(now())
+
+  @@map("stock_movements")
+}
+
+// ---------------------------------------------------------------------------
+// Expense Management (SRS 23)
+// ---------------------------------------------------------------------------
+
+enum ExpenseClaimStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  POSTED
+}
+
+// A claim is reimbursed directly on posting (Debit each line's category
+// account, Credit the chosen bank/cash account) - there is no employee
+// payable subledger yet (see docs/ARCHITECTURE.md Phase 2 simplifications).
+model ExpenseClaim {
+  id               String             @id @default(uuid())
+  clientId         String
+  client           Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  employeeId       String
+  employee         Employee           @relation(fields: [employeeId], references: [id])
+  claimNumber      String
+  date             DateTime
+  status           ExpenseClaimStatus @default(DRAFT)
+  totalAmount      Decimal            @default(0) @db.Decimal(18, 2)
+  paymentAccountId String?
+  paymentAccount   ChartOfAccount?    @relation("ExpenseClaimPaymentAccount", fields: [paymentAccountId], references: [id])
+  journalId        String?            @unique
+  journal          Journal?           @relation(fields: [journalId], references: [id])
+  createdAt        DateTime           @default(now())
+
+  lines ExpenseClaimLine[]
+
+  @@unique([clientId, claimNumber])
+  @@map("expense_claims")
+}
+
+model ExpenseClaimLine {
+  id                String         @id @default(uuid())
+  claimId           String
+  claim             ExpenseClaim   @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  description       String
+  date              DateTime
+  amount            Decimal        @db.Decimal(18, 2)
+  categoryAccountId String
+  categoryAccount   ChartOfAccount @relation(fields: [categoryAccountId], references: [id])
+  lineNumber        Int
+
+  @@map("expense_claim_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Payroll (SRS 22)
+// ---------------------------------------------------------------------------
+
+enum PayrollRunStatus {
+  DRAFT
+  POSTED
+}
+
+// Posts one journal per run (SRS 22, 70): Debit Salaries & Wages expense
+// for total gross pay, Credit Salaries Payable for total net pay, Credit a
+// deductions liability account for the difference (withheld amounts owed
+// elsewhere - e.g. GOSI/WHT - are out of scope until Phase 3's regulatory
+// rules engine assigns them real accounts).
+model PayrollRun {
+  id              String           @id @default(uuid())
+  clientId        String
+  client          Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  periodLabel     String
+  payDate         DateTime
+  status          PayrollRunStatus @default(DRAFT)
+  totalGross      Decimal          @default(0) @db.Decimal(18, 2)
+  totalDeductions Decimal          @default(0) @db.Decimal(18, 2)
+  totalNet        Decimal          @default(0) @db.Decimal(18, 2)
+  journalId       String?          @unique
+  journal         Journal?         @relation(fields: [journalId], references: [id])
+  createdAt       DateTime         @default(now())
+
+  payslips Payslip[]
+
+  @@unique([clientId, periodLabel])
+  @@map("payroll_runs")
+}
+
+model Payslip {
+  id           String     @id @default(uuid())
+  payrollRunId String
+  payrollRun   PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employeeId   String
+  employee     Employee   @relation(fields: [employeeId], references: [id])
+  basicSalary  Decimal    @db.Decimal(18, 2)
+  allowances   Decimal    @default(0) @db.Decimal(18, 2)
+  deductions   Decimal    @default(0) @db.Decimal(18, 2)
+  grossPay     Decimal    @db.Decimal(18, 2)
+  netPay       Decimal    @db.Decimal(18, 2)
+
+  @@unique([payrollRunId, employeeId])
+  @@map("payslips")
+}
+
+// ---------------------------------------------------------------------------
+// Bank Reconciliation (SRS 16, 42)
+// ---------------------------------------------------------------------------
+
+model BankStatementImport {
+  id            String         @id @default(uuid())
+  clientId      String
+  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  bankAccountId String
+  bankAccount   ChartOfAccount @relation(fields: [bankAccountId], references: [id])
+  fileName      String
+  importedById  String
+  importedBy    User           @relation(fields: [importedById], references: [id])
+  importedAt    DateTime       @default(now())
+
+  lines BankStatementLine[]
+
+  @@map("bank_statement_imports")
+}
+
+enum BankStatementLineStatus {
+  UNMATCHED
+  MATCHED
+  IGNORED
+}
+
+model BankStatementLine {
+  id          String                  @id @default(uuid())
+  importId    String
+  import      BankStatementImport     @relation(fields: [importId], references: [id], onDelete: Cascade)
+  date        DateTime
+  description String
+  // Signed: positive = money in (deposit), negative = money out (withdrawal).
+  amount      Decimal                 @db.Decimal(18, 2)
+  reference   String?
+  status      BankStatementLineStatus @default(UNMATCHED)
+
+  matchedJournalLineId String?      @unique
+  matchedJournalLine   JournalLine? @relation(fields: [matchedJournalLineId], references: [id])
+
+  @@map("bank_statement_lines")
+}
+
+enum BankReconciliationStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+// A reconciliation session snapshots the statement's ending balance so the
+// UI can show book-vs-statement variance as matching progresses; completing
+// one is a checkpoint, not a period lock (accounting periods already cover
+// that - SRS 65).
+model BankReconciliation {
+  id                     String                   @id @default(uuid())
+  clientId               String
+  client                 Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  bankAccountId          String
+  bankAccount            ChartOfAccount           @relation(fields: [bankAccountId], references: [id])
+  statementDate          DateTime
+  statementEndingBalance Decimal                  @db.Decimal(18, 2)
+  status                 BankReconciliationStatus @default(IN_PROGRESS)
+  completedById          String?
+  completedAt            DateTime?
+  createdAt              DateTime                 @default(now())
+
+  @@map("bank_reconciliations")
+}
+
+// ---------------------------------------------------------------------------
+// Document Intelligence v1 (SRS 40) - regex field extraction from text-based
+// PDFs. Image OCR (scanned documents) and real ML classification are not
+// implemented - see docs/ARCHITECTURE.md.
+// ---------------------------------------------------------------------------
+
+enum DocumentExtractionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model DocumentExtraction {
+  id            String                   @id @default(uuid())
+  documentId    String                   @unique
+  document      Document                 @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  status        DocumentExtractionStatus @default(PENDING)
+  extractedText String?
+  fields        Json?
+  confidence    Decimal?                 @db.Decimal(5, 2)
+  processedAt   DateTime?
+  createdAt     DateTime                 @default(now())
+
+  @@map("document_extractions")
 }
