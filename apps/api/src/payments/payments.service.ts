@@ -39,6 +39,13 @@ export class PaymentsService {
       throw new BadRequestException("Allocation amounts must sum to the payment amount");
     }
 
+    const whtAmount = round2(dto.whtAmount ?? 0);
+    if (whtAmount > 0) {
+      if (dto.type !== "PAYMENT") throw new BadRequestException("whtAmount only applies to a PAYMENT");
+      if (!dto.whtPayableAccountId) throw new BadRequestException("whtPayableAccountId is required when whtAmount is set");
+      if (whtAmount > dto.amount + 0.005) throw new BadRequestException("whtAmount cannot exceed the payment amount");
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const bankAccount = await tx.chartOfAccount.findUnique({ where: { id: dto.bankAccountId } });
       if (!bankAccount || bankAccount.clientId !== clientId) throw new BadRequestException("Bank account not found");
@@ -47,6 +54,7 @@ export class PaymentsService {
       }
 
       let controlAccountId: string | undefined;
+      let whtCategoryCodeSnapshot: string | undefined;
 
       if (dto.type === "RECEIPT") {
         const customer = await tx.customer.findUnique({ where: { id: dto.customerId! } });
@@ -74,6 +82,7 @@ export class PaymentsService {
       } else {
         const supplier = await tx.supplier.findUnique({ where: { id: dto.supplierId! } });
         if (!supplier || supplier.clientId !== clientId) throw new BadRequestException("Supplier not found");
+        whtCategoryCodeSnapshot = supplier.whtCategoryCode ?? undefined;
         controlAccountId =
           supplier.apAccountId ??
           (await tx.chartOfAccount.findFirst({ where: { clientId, controlAccountType: "ACCOUNTS_PAYABLE" } }))?.id;
@@ -102,6 +111,7 @@ export class PaymentsService {
         );
       }
 
+      const netBankAmount = round2(dto.amount - whtAmount);
       const journalLines =
         dto.type === "RECEIPT"
           ? [
@@ -110,7 +120,12 @@ export class PaymentsService {
             ]
           : [
               { accountId: controlAccountId, debit: dto.amount, credit: 0, description: dto.reference },
-              { accountId: dto.bankAccountId, debit: 0, credit: dto.amount, description: dto.reference },
+              { accountId: dto.bankAccountId, debit: 0, credit: netBankAmount, description: dto.reference },
+              // Only present when whtAmount > 0 (SRS 28) - the portion
+              // withheld instead of remitted to the supplier.
+              ...(whtAmount > 0.005
+                ? [{ accountId: dto.whtPayableAccountId!, debit: 0, credit: whtAmount, description: `WHT on ${dto.reference ?? "payment"}` }]
+                : []),
             ];
 
       const journal = await this.journals.postSystemJournal(tx, {
@@ -135,6 +150,9 @@ export class PaymentsService {
           bankAccountId: dto.bankAccountId,
           method: dto.method,
           reference: dto.reference,
+          whtAmount,
+          whtCategoryCode: whtAmount > 0 ? whtCategoryCodeSnapshot : undefined,
+          whtPayableAccountId: whtAmount > 0 ? dto.whtPayableAccountId : undefined,
           journalId: journal.id,
           allocations: {
             create: dto.allocations.map((a) => ({ invoiceId: a.invoiceId, billId: a.billId, amount: a.amount })),

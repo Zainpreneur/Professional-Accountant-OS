@@ -5,9 +5,10 @@ This document tracks what is actually built against the target in
 eventual Professional Accountant OS (99 sections, ~50 modules). Building all
 of it at once was explicitly ruled out by the SRS itself (§98, "Do not
 attempt to build all 50 modules simultaneously") — this repository
-implements SRS §98's **Phase 1 (Professional Foundation)** and
-**Phase 2 (Accounting Automation)** as real, running, tested code, and
-leaves Phases 3-6 as a concrete roadmap below.
+implements SRS §98's **Phase 1 (Professional Foundation)**,
+**Phase 2 (Accounting Automation)**, and **Phase 3 (Saudi Compliance)**
+as real, running, tested code, and leaves Phases 4-6 as a concrete
+roadmap below.
 
 ## Stack
 
@@ -141,6 +142,86 @@ same `JournalsService` invariant as Phase 1 - none of this code writes a
   receive/issue stock, run the expense-claim workflow, create/post a
   payroll run, import a statement and match/reconcile it).
 
+### Phase 3 - Saudi Compliance
+
+Maps to SRS §98 Phase 3. Two v1s in here (e-invoicing, and the rate content
+itself) are explicitly scoped down to what's honestly buildable without a
+government-issued certificate or a tax opinion - see each item below and
+the confirmation logged for this phase in the session that built it.
+
+- **Regulatory Rules Engine** (SRS §58): `RegulatoryRule` rows keyed by
+  (jurisdiction, authority, ruleType, code) with `effectiveFrom`/
+  `effectiveTo`, resolved by `RegulatoryRulesService.resolve(...)` - the
+  one place every VAT/WHT/Zakat calculation gets its rate from, never a
+  hard-coded percentage. Global, not client-scoped (a jurisdiction's VAT
+  rate is a fact about the jurisdiction, not about any one firm's client;
+  in a real deployment this would likely be platform-admin-managed).
+  Creating a new open-ended rule automatically closes off the previous one
+  the day before, so two versions never overlap ambiguously. Seeded with
+  real KSA history as a demonstration this isn't just a single current
+  value: VAT standard rate 5% (2018-01-01) → 15% (2020-07-01), Zakat 2.5%,
+  and a handful of WHT category rates (flagged in the seed as
+  approximate - verify against current ZATCA guidance before relying on
+  them).
+- **Tax Periods** (SRS §§25-28): a `TaxPeriod` (VAT/WHT/ZAKAT) is the
+  shared filing-window concept behind all three return types; creating
+  one auto-generates its Compliance Calendar deadline in the same call,
+  using a configurable default offset from period end (VAT +30d, WHT
+  +10d, Zakat +120d - approximations, overridable per period).
+- **VAT Returns** (SRS §§25-26): computed live from posted journal
+  activity on the VAT_OUTPUT/VAT_INPUT control accounts within the
+  period's date range - never a running total that could drift. Filing
+  nets that period's output/input VAT into a single payable-or-receivable
+  account chosen at filing time, with a balanced settlement journal
+  either way the position nets (proven both ways in
+  `apps/api/test/phase3.spec.ts`).
+- **Withholding Tax** (SRS §28): a supplier carries an optional
+  `whtCategoryCode`; `POST /clients/:clientId/wht/calculate` previews the
+  withholding via the rules engine (using the *client's own* jurisdiction,
+  not a hard-coded one) before a payment is made. A `PAYMENT`-type
+  Payment can carry `whtAmount` - the bill is still settled at its full
+  (gross) amount, but the bank movement is reduced by `whtAmount` and the
+  difference credited to a WHT payable account in the same balanced
+  journal. A WHT return aggregates a period's withheld amounts by
+  category for filing/record-keeping; remitting the accumulated payable
+  balance is an ordinary manual journal entry via the existing Journals
+  module, not a separate posting action.
+- **Zakat Engine** (SRS §27) - the commonly-published "net worth" method
+  as a configurable starting point, explicitly **not vetted tax advice**:
+  `zakatBase = equity + additions - netFixedAssets - deductions`,
+  `zakatDue = max(zakatBase, 0) × zakatRate`. `equity` (sum of EQUITY-type
+  account balances) and `netFixedAssets` (sum of ACTIVE assets' cost minus
+  accumulated depreciation) are computed live from the ledger/asset
+  register; everything else a real computation needs - financing
+  classification of long-term liabilities, investments in other entities,
+  etc. - is entered as an explicit `ZakatAdjustment` line, so the return
+  is auditable line-by-line rather than a black-box number. Filing posts
+  a balanced Debit-expense/Credit-payable journal only when `zakatDue` is
+  positive.
+- **ZATCA-shaped e-invoicing v1** (SRS §26) - local generation only, and
+  explicitly not a Fatoora integration: this environment has no
+  government-issued cryptographic certificate to sign anything with, so
+  it stops at what's publicly documented and doesn't require one. For a
+  POSTED invoice, `EInvoiceService` builds the five-field TLV QR payload
+  every KSA simplified tax invoice carries (seller name, VAT number,
+  timestamp, invoice total, VAT total - base64-encoded, rendered as a
+  real scannable PNG via `qrcode`) and an illustrative UBL-2.1-shaped XML.
+  Neither is schema-certified, cryptographically stamped, or submitted to
+  a live system - see the comments in `apps/api/src/einvoice/`.
+- **Compliance Calendar** (SRS §47): deadlines bucketed into
+  OVERDUE/DUE_TODAY/DUE_THIS_WEEK/DUE_THIS_MONTH/UPCOMING/COMPLETED,
+  computed on read (never stored) so "overdue" is always accurate as of
+  the moment it's viewed. Auto-populated from tax periods; also supports
+  manual custom deadlines for anything else (CR renewal, GOSI, municipal
+  license, ...).
+- **Segregation of duties** (SRS §55) extends to tax: `MANAGE_TAX`
+  (prepare periods/returns, assign WHT categories) is distinct from
+  `FILE_TAX_RETURNS` (file/post VAT and Zakat returns) - the same
+  preparer-≠-approver split already used for expense claims.
+- **Frontend**: Compliance, VAT, WHT, and Zakat tabs alongside the
+  existing workspace, plus an "E-invoice" action on posted invoices that
+  displays the QR code and XML inline.
+
 ### Deliberate simplifications
 
 These are scoped out on purpose, not overlooked - each is a natural
@@ -164,8 +245,18 @@ extension point for a later pass:
 - Document Intelligence: text-based PDFs and plain text only, no image
   OCR. AI Classification: a same-client posting-history heuristic, no
   cross-client learning and no LLM in the loop.
-- No tax/VAT/Zakat filing, audit workpapers, engagements, or the other 18
-  AI agents yet (see Roadmap).
+- Regulatory rules are editable by any user holding
+  `MANAGE_REGULATORY_RULES` (FIRM_OWNER/PARTNER by default) - in a real
+  multi-tenant deployment, jurisdiction facts like a country's VAT rate
+  would more likely be platform-admin-managed, not per-firm-editable.
+- WHT categories/rates and the Zakat net-worth formula follow commonly
+  published guidance as a configurable starting point - not vetted tax
+  advice, and not a substitute for a qualified reviewer before filing.
+- E-invoicing stops at local TLV/QR + illustrative XML generation - no
+  ZATCA API integration, no cryptographic invoice signing (no certificate
+  available in this environment), no live clearance/reporting.
+- No audit workpapers, engagements, independence checks, professional
+  judgment engine, or the 20 AI agents yet (see Roadmap).
 
 ## Repository layout
 
@@ -195,6 +286,13 @@ apps/
       payroll/           payroll runs + posting
       banking/           statement import, matching, reconciliation sessions
       intelligence/      document field extraction + classification suggestions
+      regulatory-rules/  versioned jurisdiction rules (VAT/WHT/Zakat rates)
+      tax-periods/       shared VAT/WHT/Zakat filing-window concept
+      vat/               VAT return generate/file
+      wht/               WHT calculation preview + return generate/file
+      zakat/             Zakat base computation, adjustments, return filing
+      einvoice/          ZATCA-shaped QR (TLV) + illustrative XML generation
+      compliance/        deadline calendar (bucketed dashboard)
     test/             vitest integration tests against a real Postgres DB
   web/              Next.js frontend (firm workspace)
 packages/
@@ -234,15 +332,10 @@ DATABASE_URL=<test-db-url> pnpm --filter @accountant-os/db exec prisma migrate d
 pnpm --filter @accountant-os/api test
 ```
 
-## Roadmap (SRS §98 Phases 3-6)
+## Roadmap (SRS §98 Phases 4-6)
 
 Not built yet - listed here so scope is explicit rather than implied:
 
-- **Phase 3 - Saudi compliance**: VAT return preparation, ZATCA
-  e-invoicing (SRS §26), Zakat engine (SRS §27), withholding tax (SRS
-  §28), the jurisdiction/regulatory rules engine (SRS §58) so rules are
-  versioned data, not hard-coded logic, and the compliance calendar (SRS
-  §47).
 - **Phase 4 - Professional CA**: engagements, audit module (planning,
   risk, procedures, evidence, findings, completion - SRS §33-34),
   independence checks (SRS §36), the professional judgment engine (SRS

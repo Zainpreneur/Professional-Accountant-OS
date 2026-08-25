@@ -7,11 +7,14 @@ accounting, tax/VAT/Zakat compliance, audit, and professional reporting.
 Jurisdiction-configurable, with Saudi Arabia (ZATCA e-invoicing, VAT, Zakat) as a first-class
 configuration.
 
-This repository currently implements **Phase 1 (Professional Foundation)** and **Phase 2
-(Accounting Automation)**: multi-tenancy, RBAC, client onboarding, a double-entry accounting core,
-AR/AP, payments, fixed assets, inventory, expense claims, payroll, bank reconciliation, document
-field extraction, and rule-based posting suggestions — as real, running, tested code. See
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for exactly what's built vs. the full roadmap.
+This repository currently implements **Phase 1 (Professional Foundation)**, **Phase 2
+(Accounting Automation)**, and **Phase 3 (Saudi Compliance)**: multi-tenancy, RBAC, client
+onboarding, a double-entry accounting core, AR/AP, payments, fixed assets, inventory, expense
+claims, payroll, bank reconciliation, document field extraction, rule-based posting suggestions,
+a versioned regulatory rules engine, VAT/WHT/Zakat returns, ZATCA-shaped e-invoicing (local QR +
+XML generation, not a live Fatoora integration), and a compliance calendar — as real, running,
+tested code. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for exactly what's built vs. the
+full roadmap.
 
 ## Documentation
 
@@ -40,7 +43,8 @@ pnpm dev:web                         # http://localhost:3000
 ## Repository layout
 
 ```
-apps/api/     NestJS backend (auth, RBAC, accounting core, AR/AP, payments, reports, documents)
+apps/api/     NestJS backend (auth, RBAC, accounting core, AR/AP, payments, reports, documents,
+              fixed assets, inventory, payroll, banking, VAT/WHT/Zakat, e-invoicing, compliance)
 apps/web/     Next.js firm workspace
 packages/db/  Prisma schema, migrations, seed script
 docs/         SRS + architecture docs

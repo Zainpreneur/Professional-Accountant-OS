@@ -55,6 +55,21 @@ export class CreatePaymentDto {
   @IsString()
   reference?: string;
 
+  // Withholding tax (SRS 28), PAYMENT only: withheld from what's actually
+  // wired to the supplier. Allocations still settle the full (gross) bill
+  // amount - only the bank movement is reduced by whtAmount, with the
+  // difference credited to whtPayableAccountId. Use
+  // GET .../wht/calculate to compute this from the supplier's WHT category
+  // via the regulatory rules engine before submitting.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  whtAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  whtPayableAccountId?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

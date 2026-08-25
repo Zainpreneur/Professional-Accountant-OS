@@ -47,6 +47,12 @@ export const PERMISSIONS = {
   APPROVE_EXPENSES: "APPROVE_EXPENSES",
   MANAGE_PAYROLL: "MANAGE_PAYROLL",
   MANAGE_BANKING: "MANAGE_BANKING",
+
+  // Phase 3 - Saudi compliance
+  MANAGE_REGULATORY_RULES: "MANAGE_REGULATORY_RULES", // in a real deployment this would be a platform-admin capability, not per-firm
+  MANAGE_TAX: "MANAGE_TAX", // prepare tax periods/returns, assign WHT categories
+  FILE_TAX_RETURNS: "FILE_TAX_RETURNS", // file/post VAT & Zakat returns - separate from preparation (SRS 55)
+  MANAGE_COMPLIANCE: "MANAGE_COMPLIANCE", // compliance calendar
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -84,6 +90,10 @@ export const SYSTEM_ROLES: Record<string, { description: string; permissions: Pe
       PERMISSIONS.APPROVE_EXPENSES,
       PERMISSIONS.MANAGE_PAYROLL,
       PERMISSIONS.MANAGE_BANKING,
+      PERMISSIONS.MANAGE_REGULATORY_RULES,
+      PERMISSIONS.MANAGE_TAX,
+      PERMISSIONS.FILE_TAX_RETURNS,
+      PERMISSIONS.MANAGE_COMPLIANCE,
     ],
   },
   ACCOUNTANT: {
@@ -106,6 +116,8 @@ export const SYSTEM_ROLES: Record<string, { description: string; permissions: Pe
       PERMISSIONS.MANAGE_EXPENSES,
       PERMISSIONS.MANAGE_PAYROLL,
       PERMISSIONS.MANAGE_BANKING,
+      PERMISSIONS.MANAGE_TAX,
+      PERMISSIONS.MANAGE_COMPLIANCE,
     ],
   },
   CLIENT_ADMIN: {

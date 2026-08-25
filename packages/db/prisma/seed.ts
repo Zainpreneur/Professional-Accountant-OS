@@ -185,10 +185,140 @@ async function main() {
     },
   });
 
+  await seedRegulatoryRules();
+
   console.log("Seed complete.");
   console.log(`  Firm:  ${firm.name} (${firm.id})`);
   console.log(`  Login: ${ownerEmail} / Password123!`);
   console.log(`  Client: ${client.legalName} (${client.id})`);
+}
+
+// Default Saudi regulatory rules (SRS 58, Phase 3). These follow published
+// history/typical guidance as a configurable starting point - not vetted
+// tax advice; see docs/ARCHITECTURE.md. The VAT_RATE/STANDARD history below
+// (5% -> 15% on 2020-07-01) is real public record and doubles as a
+// demonstration that the rules engine actually resolves by effective date
+// rather than just holding a single current value.
+async function seedRegulatoryRules() {
+  const rules: Array<{
+    jurisdiction: string;
+    authority: string;
+    ruleType: "VAT_RATE" | "WHT_RATE" | "ZAKAT_RATE";
+    code: string;
+    name: string;
+    description?: string;
+    rate: number;
+    effectiveFrom: string;
+    effectiveTo?: string;
+  }> = [
+    {
+      jurisdiction: "SA",
+      authority: "ZATCA",
+      ruleType: "VAT_RATE",
+      code: "STANDARD",
+      name: "Standard VAT rate",
+      rate: 5,
+      effectiveFrom: "2018-01-01",
+      effectiveTo: "2020-06-30",
+    },
+    {
+      jurisdiction: "SA",
+      authority: "ZATCA",
+      ruleType: "VAT_RATE",
+      code: "STANDARD",
+      name: "Standard VAT rate",
+      rate: 15,
+      effectiveFrom: "2020-07-01",
+    },
+    { jurisdiction: "SA", authority: "ZATCA", ruleType: "VAT_RATE", code: "ZERO_RATED", name: "Zero-rated", rate: 0, effectiveFrom: "2018-01-01" },
+    { jurisdiction: "SA", authority: "ZATCA", ruleType: "VAT_RATE", code: "EXEMPT", name: "Exempt", rate: 0, effectiveFrom: "2018-01-01" },
+    { jurisdiction: "SA", authority: "ZATCA", ruleType: "ZAKAT_RATE", code: "STANDARD", name: "Standard Zakat rate", rate: 2.5, effectiveFrom: "2018-01-01" },
+    {
+      jurisdiction: "SA",
+      authority: "ZATCA",
+      ruleType: "WHT_RATE",
+      code: "MANAGEMENT_FEES",
+      name: "Management fees",
+      description: "Approximate published rate - verify against current ZATCA guidance before relying on it.",
+      rate: 20,
+      effectiveFrom: "2018-01-01",
+    },
+    {
+      jurisdiction: "SA",
+      authority: "ZATCA",
+      ruleType: "WHT_RATE",
+      code: "ROYALTIES",
+      name: "Royalties",
+      description: "Approximate published rate - verify against current ZATCA guidance before relying on it.",
+      rate: 15,
+      effectiveFrom: "2018-01-01",
+    },
+    {
+      jurisdiction: "SA",
+      authority: "ZATCA",
+      ruleType: "WHT_RATE",
+      code: "SERVICES",
+      name: "Services (general)",
+      description: "Approximate published rate - verify against current ZATCA guidance before relying on it.",
+      rate: 5,
+      effectiveFrom: "2018-01-01",
+    },
+    {
+      jurisdiction: "SA",
+      authority: "ZATCA",
+      ruleType: "WHT_RATE",
+      code: "RENT",
+      name: "Rent",
+      description: "Approximate published rate - verify against current ZATCA guidance before relying on it.",
+      rate: 5,
+      effectiveFrom: "2018-01-01",
+    },
+    {
+      jurisdiction: "SA",
+      authority: "ZATCA",
+      ruleType: "WHT_RATE",
+      code: "DIVIDENDS",
+      name: "Dividends",
+      description: "Approximate published rate - verify against current ZATCA guidance before relying on it.",
+      rate: 5,
+      effectiveFrom: "2018-01-01",
+    },
+    {
+      jurisdiction: "SA",
+      authority: "ZATCA",
+      ruleType: "WHT_RATE",
+      code: "INTEREST",
+      name: "Interest / loan charges",
+      description: "Approximate published rate - verify against current ZATCA guidance before relying on it.",
+      rate: 5,
+      effectiveFrom: "2018-01-01",
+    },
+  ];
+
+  for (const rule of rules) {
+    const existing = await prisma.regulatoryRule.findFirst({
+      where: {
+        jurisdiction: rule.jurisdiction,
+        ruleType: rule.ruleType as any,
+        code: rule.code,
+        effectiveFrom: new Date(rule.effectiveFrom),
+      },
+    });
+    if (existing) continue;
+    await prisma.regulatoryRule.create({
+      data: {
+        jurisdiction: rule.jurisdiction,
+        authority: rule.authority,
+        ruleType: rule.ruleType as any,
+        code: rule.code,
+        name: rule.name,
+        description: rule.description,
+        rate: rule.rate,
+        effectiveFrom: new Date(rule.effectiveFrom),
+        effectiveTo: rule.effectiveTo ? new Date(rule.effectiveTo) : null,
+      },
+    });
+  }
 }
 
 main()

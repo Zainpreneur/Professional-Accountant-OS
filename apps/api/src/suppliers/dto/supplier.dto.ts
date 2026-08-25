@@ -18,6 +18,12 @@ export class CreateSupplierDto {
   @IsOptional()
   @IsString()
   taxNumber?: string;
+
+  // References RegulatoryRule.code for ruleType=WHT_RATE (SRS 28), e.g.
+  // "SERVICES", "ROYALTIES". Omit for suppliers with no withholding.
+  @IsOptional()
+  @IsString()
+  whtCategoryCode?: string;
 }
 
 export class UpdateSupplierDto extends CreateSupplierDto {}

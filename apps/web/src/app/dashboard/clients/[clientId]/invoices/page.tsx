@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
 interface Customer {
   id: string;
   code: string;
@@ -43,6 +45,7 @@ export default function InvoicesPage({ params }: { params: { clientId: string } 
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
+  const [einvoice, setEinvoice] = useState<{ invoiceId: string; xmlContent: string; qrUrl: string } | null>(null);
 
   const revenueAccounts = accounts.filter((a) => a.type === "REVENUE");
 
@@ -110,6 +113,27 @@ export default function InvoicesPage({ params }: { params: { clientId: string } 
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to post invoice");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onGenerateEInvoice(id: string) {
+    setBusyId(id);
+    setError(null);
+    try {
+      const record = await api<{ xmlContent: string; qrPayloadBase64: string }>(`/clients/${clientId}/invoices/${id}/einvoice`, {
+        method: "POST",
+      });
+      const token = window.localStorage.getItem("accountant_os_token");
+      const res = await fetch(`${API_URL}/api/v1/clients/${clientId}/invoices/${id}/einvoice/qr.png`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const blob = await res.blob();
+      const qrUrl = URL.createObjectURL(blob);
+      setEinvoice({ invoiceId: id, xmlContent: record.xmlContent, qrUrl });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to generate e-invoice");
     } finally {
       setBusyId(null);
     }
@@ -263,10 +287,15 @@ export default function InvoicesPage({ params }: { params: { clientId: string } 
                   <td>
                     <span className={`badge ${inv.status.toLowerCase().replace("_", "-")}`}>{inv.status}</span>
                   </td>
-                  <td>
+                  <td className="row">
                     {inv.status === "DRAFT" && (
                       <button className="secondary" disabled={busyId === inv.id} onClick={() => onPost(inv.id)}>
                         Post
+                      </button>
+                    )}
+                    {inv.status !== "DRAFT" && inv.status !== "VOID" && (
+                      <button className="secondary" disabled={busyId === inv.id} onClick={() => onGenerateEInvoice(inv.id)}>
+                        E-invoice
                       </button>
                     )}
                   </td>
@@ -276,6 +305,22 @@ export default function InvoicesPage({ params }: { params: { clientId: string } 
           </table>
         )}
       </div>
+
+      {einvoice && (
+        <div className="card stack">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <strong>ZATCA-shaped e-invoice (local generation only - not submitted to ZATCA)</strong>
+            <button className="secondary" onClick={() => setEinvoice(null)}>Close</button>
+          </div>
+          <div className="row" style={{ alignItems: "flex-start" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={einvoice.qrUrl} alt="ZATCA QR code" width={200} height={200} style={{ border: "1px solid var(--border)" }} />
+            <pre style={{ flex: 1, overflowX: "auto", fontSize: 12, background: "#f9fbfc", padding: 12, borderRadius: 6 }}>
+              {einvoice.xmlContent}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

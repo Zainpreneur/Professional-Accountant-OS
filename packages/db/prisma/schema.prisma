@@ -151,6 +151,11 @@ model Client {
   payrollRuns          PayrollRun[]
   bankStatementImports BankStatementImport[]
   bankReconciliations  BankReconciliation[]
+  taxPeriods           TaxPeriod[]
+  vatReturns           VatReturn[]
+  whtReturns           WhtReturn[]
+  zakatReturns         ZakatReturn[]
+  complianceDeadlines  ComplianceDeadline[]
 
   @@unique([firmId, legalName])
   @@map("clients")
@@ -253,6 +258,10 @@ model ChartOfAccount {
   expenseClaimsAsPaymentAccount ExpenseClaim[]        @relation("ExpenseClaimPaymentAccount")
   bankStatementImports          BankStatementImport[]
   bankReconciliations           BankReconciliation[]
+  paymentsAsWhtPayableAccount   Payment[]             @relation("PaymentWhtPayableAccount")
+  vatReturnsAsPayableAccount    VatReturn[]           @relation("VatReturnPayableAccount")
+  zakatReturnsAsExpenseAccount  ZakatReturn[]         @relation("ZakatReturnExpenseAccount")
+  zakatReturnsAsPayableAccount  ZakatReturn[]         @relation("ZakatReturnPayableAccount")
 
   @@unique([clientId, code])
   @@map("chart_of_accounts")
@@ -351,6 +360,8 @@ model Journal {
   stockMovement         StockMovement?
   expenseClaim          ExpenseClaim?
   payrollRun            PayrollRun?
+  vatReturn             VatReturn?
+  zakatReturn           ZakatReturn?
 
   @@unique([clientId, journalNumber])
   @@map("journals")
@@ -401,18 +412,22 @@ model Customer {
 }
 
 model Supplier {
-  id          String          @id @default(uuid())
-  clientId    String
-  client      Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  code        String
-  name        String
-  email       String?
-  phone       String?
-  taxNumber   String?
-  apAccountId String?
-  apAccount   ChartOfAccount? @relation("SupplierApAccount", fields: [apAccountId], references: [id])
-  active      Boolean         @default(true)
-  createdAt   DateTime        @default(now())
+  id              String          @id @default(uuid())
+  clientId        String
+  client          Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  code            String
+  name            String
+  email           String?
+  phone           String?
+  taxNumber       String?
+  apAccountId     String?
+  apAccount       ChartOfAccount? @relation("SupplierApAccount", fields: [apAccountId], references: [id])
+  // References RegulatoryRule.code for ruleType=WHT (SRS 28) - the default
+  // withholding category applied to payments to this supplier. Nullable:
+  // most suppliers (e.g. resident suppliers of goods) have no withholding.
+  whtCategoryCode String?
+  active          Boolean         @default(true)
+  createdAt       DateTime        @default(now())
 
   bills    Bill[]
   payments Payment[]
@@ -456,6 +471,7 @@ model Invoice {
 
   lines       InvoiceLine[]
   allocations PaymentAllocation[]
+  einvoice    EInvoiceRecord?
 
   @@unique([clientId, invoiceNumber])
   @@map("invoices")
@@ -560,6 +576,17 @@ model Payment {
   journalId     String?        @unique
   journal       Journal?       @relation(fields: [journalId], references: [id])
   createdAt     DateTime       @default(now())
+
+  // Withholding tax (SRS 28): when paying a supplier with a WHT category,
+  // the amount actually wired to the bank is net of whtAmount, and
+  // whtAmount is credited to whtPayableAccountId instead - see
+  // PaymentsService and WhtReturnService, which aggregates these by period.
+  // whtCategoryCode snapshots the supplier's category at payment time, so a
+  // later change to the supplier's category never rewrites history.
+  whtAmount           Decimal         @default(0) @db.Decimal(18, 2)
+  whtCategoryCode     String?
+  whtPayableAccountId String?
+  whtPayableAccount   ChartOfAccount? @relation("PaymentWhtPayableAccount", fields: [whtPayableAccountId], references: [id])
 
   allocations PaymentAllocation[]
 
@@ -1036,4 +1063,231 @@ model DocumentExtraction {
   createdAt     DateTime                 @default(now())
 
   @@map("document_extractions")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 - Saudi compliance (docs/ARCHITECTURE.md roadmap)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Regulatory Rules Engine (SRS 58). Rates/thresholds are versioned data,
+// never hard-coded in application code: RegulatoryRulesService resolves
+// "the applicable rule for (jurisdiction, ruleType, code) as of a date" by
+// querying this table, so a rate change (or a jurisdiction added later)
+// never requires touching VAT/WHT/Zakat calculation code. Global, not
+// client-scoped - "Saudi VAT is 15%" is a fact about the jurisdiction, not
+// about any one firm's client.
+// ---------------------------------------------------------------------------
+
+enum RuleType {
+  VAT_RATE
+  WHT_RATE
+  ZAKAT_RATE
+}
+
+model RegulatoryRule {
+  id            String    @id @default(uuid())
+  jurisdiction  String // ISO country code, e.g. "SA"
+  authority     String // e.g. "ZATCA"
+  ruleType      RuleType
+  code          String // e.g. "STANDARD", "ZERO_RATED" (VAT); "SERVICES", "ROYALTIES" (WHT)
+  name          String
+  description   String?
+  rate          Decimal   @db.Decimal(7, 4) // percentage, e.g. 15.0000
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([jurisdiction, ruleType, code, effectiveFrom])
+  @@map("regulatory_rules")
+}
+
+// ---------------------------------------------------------------------------
+// Tax periods (SRS 25-28) - a shared filing-window concept reused by VAT,
+// WHT, and Zakat returns, and the source of their compliance-calendar
+// deadlines.
+// ---------------------------------------------------------------------------
+
+enum TaxPeriodType {
+  VAT
+  WHT
+  ZAKAT
+}
+
+model TaxPeriod {
+  id         String        @id @default(uuid())
+  clientId   String
+  client     Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  periodType TaxPeriodType
+  name       String
+  startDate  DateTime
+  endDate    DateTime
+  dueDate    DateTime
+  createdAt  DateTime      @default(now())
+
+  vatReturns   VatReturn[]
+  whtReturns   WhtReturn[]
+  zakatReturns ZakatReturn[]
+
+  @@unique([clientId, periodType, name])
+  @@map("tax_periods")
+}
+
+// ---------------------------------------------------------------------------
+// VAT Returns (SRS 25-26)
+// ---------------------------------------------------------------------------
+
+enum TaxReturnStatus {
+  DRAFT
+  FILED
+}
+
+model VatReturn {
+  id               String          @id @default(uuid())
+  clientId         String
+  client           Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  taxPeriodId      String
+  taxPeriod        TaxPeriod       @relation(fields: [taxPeriodId], references: [id], onDelete: Cascade)
+  outputVat        Decimal         @default(0) @db.Decimal(18, 2)
+  inputVat         Decimal         @default(0) @db.Decimal(18, 2)
+  netVatDue        Decimal         @default(0) @db.Decimal(18, 2) // positive = payable, negative = refundable
+  status           TaxReturnStatus @default(DRAFT)
+  payableAccountId String?
+  payableAccount   ChartOfAccount? @relation("VatReturnPayableAccount", fields: [payableAccountId], references: [id])
+  journalId        String?         @unique
+  journal          Journal?        @relation(fields: [journalId], references: [id])
+  filedById        String?
+  filedAt          DateTime?
+  createdAt        DateTime        @default(now())
+
+  @@unique([taxPeriodId])
+  @@map("vat_returns")
+}
+
+// ---------------------------------------------------------------------------
+// Withholding Tax Returns (SRS 28). WHT itself is withheld and accrued at
+// each Payment (see Payment.whtAmount) - a WhtReturn is a period summary of
+// those accruals for filing/record-keeping, not a separate posting (the GL
+// impact already happened when each payment was posted). Remitting the
+// accumulated WHT Payable balance to the authority is an ordinary manual
+// journal entry via the existing Journals module.
+// ---------------------------------------------------------------------------
+
+model WhtReturn {
+  id          String          @id @default(uuid())
+  clientId    String
+  client      Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  taxPeriodId String
+  taxPeriod   TaxPeriod       @relation(fields: [taxPeriodId], references: [id], onDelete: Cascade)
+  totalWht    Decimal         @default(0) @db.Decimal(18, 2)
+  breakdown   Json // [{ categoryCode, categoryName, amount }]
+  status      TaxReturnStatus @default(DRAFT)
+  filedById   String?
+  filedAt     DateTime?
+  createdAt   DateTime        @default(now())
+
+  @@unique([taxPeriodId])
+  @@map("wht_returns")
+}
+
+// ---------------------------------------------------------------------------
+// Zakat Engine (SRS 27). zakatBase follows the commonly-published
+// "net worth" method as a configurable starting point, not vetted tax
+// advice - see ZakatService and docs/ARCHITECTURE.md:
+//   zakatBase = equity + additions - netFixedAssets - deductions
+//   zakatDue  = max(zakatBase, 0) * zakatRate
+// ---------------------------------------------------------------------------
+
+model ZakatReturn {
+  id                   String          @id @default(uuid())
+  clientId             String
+  client               Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  taxPeriodId          String
+  taxPeriod            TaxPeriod       @relation(fields: [taxPeriodId], references: [id], onDelete: Cascade)
+  equityAmount         Decimal         @default(0) @db.Decimal(18, 2)
+  netFixedAssetsAmount Decimal         @default(0) @db.Decimal(18, 2)
+  additionsTotal       Decimal         @default(0) @db.Decimal(18, 2)
+  deductionsTotal      Decimal         @default(0) @db.Decimal(18, 2)
+  zakatBase            Decimal         @default(0) @db.Decimal(18, 2)
+  zakatRate            Decimal         @default(0) @db.Decimal(7, 4)
+  zakatDue             Decimal         @default(0) @db.Decimal(18, 2)
+  status               TaxReturnStatus @default(DRAFT)
+  expenseAccountId     String?
+  expenseAccount       ChartOfAccount? @relation("ZakatReturnExpenseAccount", fields: [expenseAccountId], references: [id])
+  payableAccountId     String?
+  payableAccount       ChartOfAccount? @relation("ZakatReturnPayableAccount", fields: [payableAccountId], references: [id])
+  journalId            String?         @unique
+  journal              Journal?        @relation(fields: [journalId], references: [id])
+  filedById            String?
+  filedAt              DateTime?
+  createdAt            DateTime        @default(now())
+
+  adjustments ZakatAdjustment[]
+
+  @@unique([taxPeriodId])
+  @@map("zakat_returns")
+}
+
+enum ZakatAdjustmentType {
+  ADDITION
+  DEDUCTION
+}
+
+model ZakatAdjustment {
+  id            String              @id @default(uuid())
+  zakatReturnId String
+  zakatReturn   ZakatReturn         @relation(fields: [zakatReturnId], references: [id], onDelete: Cascade)
+  description   String
+  type          ZakatAdjustmentType
+  amount        Decimal             @db.Decimal(18, 2)
+  createdAt     DateTime            @default(now())
+
+  @@map("zakat_adjustments")
+}
+
+// ---------------------------------------------------------------------------
+// ZATCA-shaped e-invoicing v1 (SRS 26) - local generation only, see
+// EInvoiceService: a TLV/base64 QR payload (the published "Phase 1"
+// simplified-invoice QR fields) and an illustrative UBL-shaped XML. Neither
+// is submitted to ZATCA's live Fatoora platform or cryptographically
+// stamped - this environment has no government-issued certificate to do
+// that with. docs/ARCHITECTURE.md spells this out.
+// ---------------------------------------------------------------------------
+
+model EInvoiceRecord {
+  id              String   @id @default(uuid())
+  invoiceId       String   @unique
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  qrPayloadBase64 String
+  xmlContent      String
+  generatedAt     DateTime @default(now())
+
+  @@map("einvoice_records")
+}
+
+// ---------------------------------------------------------------------------
+// Compliance Calendar (SRS 47)
+// ---------------------------------------------------------------------------
+
+enum ComplianceDeadlineStatus {
+  PENDING
+  COMPLETED
+}
+
+model ComplianceDeadline {
+  id                String                   @id @default(uuid())
+  clientId          String
+  client            Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  category          String // e.g. "VAT_RETURN", "WHT_RETURN", "ZAKAT_RETURN", "CUSTOM"
+  title             String
+  dueDate           DateTime
+  status            ComplianceDeadlineStatus @default(PENDING)
+  relatedEntityType String?
+  relatedEntityId   String?
+  notes             String?
+  completedById     String?
+  completedAt       DateTime?
+  createdAt         DateTime                 @default(now())
+
+  @@map("compliance_deadlines")
 }

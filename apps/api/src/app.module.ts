@@ -19,6 +19,13 @@ import { ExpensesModule } from "./expenses/expenses.module";
 import { PayrollModule } from "./payroll/payroll.module";
 import { BankingModule } from "./banking/banking.module";
 import { IntelligenceModule } from "./intelligence/intelligence.module";
+import { RegulatoryRulesModule } from "./regulatory-rules/regulatory-rules.module";
+import { ComplianceModule } from "./compliance/compliance.module";
+import { TaxPeriodsModule } from "./tax-periods/tax-periods.module";
+import { VatModule } from "./vat/vat.module";
+import { WhtModule } from "./wht/wht.module";
+import { ZakatModule } from "./zakat/zakat.module";
+import { EInvoiceModule } from "./einvoice/einvoice.module";
 
 @Module({
   imports: [
@@ -42,6 +49,13 @@ import { IntelligenceModule } from "./intelligence/intelligence.module";
     PayrollModule,
     BankingModule,
     IntelligenceModule,
+    RegulatoryRulesModule,
+    ComplianceModule,
+    TaxPeriodsModule,
+    VatModule,
+    WhtModule,
+    ZakatModule,
+    EInvoiceModule,
   ],
 })
 export class AppModule {}
