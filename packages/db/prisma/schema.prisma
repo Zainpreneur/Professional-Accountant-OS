@@ -61,6 +61,21 @@ model User {
   clientMembers        ClientMember[]
   bankStatementImports BankStatementImport[]
 
+  engagementsCreated         Engagement[]               @relation("EngagementCreatedBy")
+  engagementsConcluded       Engagement[]               @relation("EngagementConcludedBy")
+  engagementsApproved        Engagement[]               @relation("EngagementApprovedBy")
+  engagementTeamMemberships  EngagementTeamMember[]     @relation("EngagementTeamMembership")
+  independenceChecksLogged   IndependenceCheck[]        @relation("IndependenceCheckedBy")
+  independenceChecksResolved IndependenceCheck[]        @relation("IndependenceResolvedBy")
+  auditRisksCreated          AuditRisk[]                @relation("AuditRiskCreatedBy")
+  proceduresPerformed        AuditProcedure[]           @relation("ProcedurePerformedBy")
+  evidenceObtained           AuditEvidence[]            @relation("EvidenceObtainedBy")
+  findingsCreated            AuditFinding[]             @relation("FindingCreatedBy")
+  completionItemsCompleted   EngagementCompletionItem[] @relation("CompletionItemCompletedBy")
+  judgmentCasesCreated       ProfessionalJudgmentCase[] @relation("JudgmentCreatedBy")
+  judgmentCasesDecided       ProfessionalJudgmentCase[] @relation("JudgmentDecidedBy")
+  judgmentCasesApproved      ProfessionalJudgmentCase[] @relation("JudgmentApprovedBy")
+
   @@unique([firmId, email])
   @@map("users")
 }
@@ -156,6 +171,7 @@ model Client {
   whtReturns           WhtReturn[]
   zakatReturns         ZakatReturn[]
   complianceDeadlines  ComplianceDeadline[]
+  judgmentCases        ProfessionalJudgmentCase[]
 
   @@unique([firmId, legalName])
   @@map("clients")
@@ -183,6 +199,23 @@ enum EngagementStatus {
   CANCELLED
 }
 
+enum AcceptanceStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+enum IndependenceStatus {
+  CLEARED
+  EXCEPTION
+}
+
+// Professional CA (SRS 33, 77). Acceptance/continuance, materiality, and
+// team are set up before fieldwork; conclusion + partner approval close it
+// out. `concludedById`/`approvedById` are deliberately separate users -
+// EngagementsService.approve() rejects an approver who matches the
+// concluder, enforcing SRS 55 segregation of duties by identity, not just
+// by permission (a firm could otherwise grant one person both permissions).
 model Engagement {
   id          String           @id @default(uuid())
   clientId    String
@@ -191,10 +224,341 @@ model Engagement {
   periodStart DateTime
   periodEnd   DateTime
   status      EngagementStatus @default(PLANNED)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+
+  acceptanceStatus   AcceptanceStatus    @default(PENDING)
+  materialityAmount  Decimal?            @db.Decimal(18, 2)
+  materialityBasis   String?
+  scope              String?
+  independenceStatus IndependenceStatus?
+
+  createdById String
+  createdBy   User   @relation("EngagementCreatedBy", fields: [createdById], references: [id])
+
+  conclusionText String?
+  concludedById  String?
+  concludedBy    User?     @relation("EngagementConcludedBy", fields: [concludedById], references: [id])
+  concludedAt    DateTime?
+  approvedById   String?
+  approvedBy     User?     @relation("EngagementApprovedBy", fields: [approvedById], references: [id])
+  approvedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teamMembers        EngagementTeamMember[]
+  independenceChecks IndependenceCheck[]
+  risks              AuditRisk[]
+  procedures         AuditProcedure[]
+  evidence           AuditEvidence[]
+  findings           AuditFinding[]
+  completionItems    EngagementCompletionItem[]
+  judgmentCases      ProfessionalJudgmentCase[]
 
   @@map("engagements")
+}
+
+enum EngagementTeamRole {
+  PARTNER
+  MANAGER
+  SENIOR
+  STAFF
+}
+
+model EngagementTeamMember {
+  id           String             @id @default(uuid())
+  engagementId String
+  engagement   Engagement         @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User               @relation("EngagementTeamMembership", fields: [userId], references: [id])
+  role         EngagementTeamRole
+  createdAt    DateTime           @default(now())
+
+  @@unique([engagementId, userId])
+  @@map("engagement_team_members")
+}
+
+enum IndependenceResolution {
+  PENDING
+  SAFEGUARDED
+  DECLINED_ENGAGEMENT
+}
+
+// Independence Engine (SRS 36). Any threat flag true => status EXCEPTION,
+// which must be resolved before... - this app doesn't hard-block other
+// engagement actions on an open exception (that's a firm policy decision),
+// but it does enforce that whoever resolves an exception is not the same
+// user who logged it (SRS 55-style segregation), and every exception is
+// visible on the engagement record via `independenceStatus`.
+model IndependenceCheck {
+  id           String     @id @default(uuid())
+  engagementId String
+  engagement   Engagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+
+  hasFinancialInterest          Boolean            @default(false)
+  hasCloseRelationship          Boolean            @default(false)
+  hasPriorEngagementConflict    Boolean            @default(false)
+  hasProhibitedActivity         Boolean            @default(false)
+  selfReviewThreat              Boolean            @default(false)
+  familiarityThreat             Boolean            @default(false)
+  advocacyThreat                Boolean            @default(false)
+  managementParticipationThreat Boolean            @default(false)
+  notes                         String?
+  status                        IndependenceStatus
+
+  checkedById String
+  checkedBy   User   @relation("IndependenceCheckedBy", fields: [checkedById], references: [id])
+
+  resolution      IndependenceResolution @default(PENDING)
+  resolutionNotes String?
+  resolvedById    String?
+  resolvedBy      User?                  @relation("IndependenceResolvedBy", fields: [resolvedById], references: [id])
+  resolvedAt      DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@map("independence_checks")
+}
+
+enum AuditRiskCategory {
+  INHERENT
+  CONTROL
+  DETECTION
+  FRAUD
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// SRS 34 assertions, used to tag both risks and the procedures that
+// address them, and findings that relate to either.
+enum AuditAssertion {
+  EXISTENCE
+  COMPLETENESS
+  ACCURACY
+  CUTOFF
+  CLASSIFICATION
+  RIGHTS_AND_OBLIGATIONS
+  VALUATION
+  PRESENTATION
+  DISCLOSURE
+}
+
+model AuditRisk {
+  id            String            @id @default(uuid())
+  engagementId  String
+  engagement    Engagement        @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  description   String
+  category      AuditRiskCategory
+  assertion     AuditAssertion?
+  likelihood    RiskLevel
+  impact        RiskLevel
+  isSignificant Boolean           @default(false)
+  response      String?
+
+  createdById String
+  createdBy   User     @relation("AuditRiskCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  procedures AuditProcedure[]
+  findings   AuditFinding[]
+
+  @@map("audit_risks")
+}
+
+enum AuditProcedureType {
+  CONTROL_TEST
+  SUBSTANTIVE_TEST
+  ANALYTICAL_PROCEDURE
+}
+
+enum AuditProcedureStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+model AuditProcedure {
+  id            String               @id @default(uuid())
+  engagementId  String
+  engagement    Engagement           @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  riskId        String?
+  risk          AuditRisk?           @relation(fields: [riskId], references: [id])
+  assertion     AuditAssertion
+  procedureType AuditProcedureType
+  description   String
+  sampleSize    Int?
+  status        AuditProcedureStatus @default(NOT_STARTED)
+
+  performedById String?
+  performedBy   User?     @relation("ProcedurePerformedBy", fields: [performedById], references: [id])
+  performedAt   DateTime?
+  conclusion    String?
+
+  createdAt DateTime @default(now())
+
+  evidence AuditEvidence[]
+  findings AuditFinding[]
+
+  @@map("audit_procedures")
+}
+
+enum AuditEvidenceType {
+  DOCUMENT
+  CONFIRMATION
+  OBSERVATION
+  INQUIRY
+  RECALCULATION
+  EXTERNAL
+  INTERNAL
+}
+
+// Evidence chain (SRS 33, 41): links a piece of evidence (a Document when
+// there's a file, or just a description for an oral confirmation/
+// observation) to the procedure or finding it supports.
+model AuditEvidence {
+  id           String            @id @default(uuid())
+  engagementId String
+  engagement   Engagement        @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  procedureId  String?
+  procedure    AuditProcedure?   @relation(fields: [procedureId], references: [id])
+  findingId    String?
+  finding      AuditFinding?     @relation(fields: [findingId], references: [id])
+  documentId   String?
+  document     Document?         @relation(fields: [documentId], references: [id])
+  description  String
+  evidenceType AuditEvidenceType
+
+  obtainedById String
+  obtainedBy   User     @relation("EvidenceObtainedBy", fields: [obtainedById], references: [id])
+  obtainedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@map("audit_evidence")
+}
+
+enum AuditFindingType {
+  EXCEPTION
+  MISSTATEMENT
+  CONTROL_DEFICIENCY
+}
+
+enum AuditFindingSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum AuditFindingStatus {
+  OPEN
+  RESOLVED
+  ACCEPTED
+}
+
+model AuditFinding {
+  id                 String               @id @default(uuid())
+  engagementId       String
+  engagement         Engagement           @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  procedureId        String?
+  procedure          AuditProcedure?      @relation(fields: [procedureId], references: [id])
+  riskId             String?
+  risk               AuditRisk?           @relation(fields: [riskId], references: [id])
+  type               AuditFindingType
+  assertion          AuditAssertion?
+  description        String
+  amount             Decimal?             @db.Decimal(18, 2)
+  severity           AuditFindingSeverity
+  recommendation     String?
+  managementResponse String?
+  status             AuditFindingStatus   @default(OPEN)
+
+  createdById String
+  createdBy   User      @relation("FindingCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  resolvedAt  DateTime?
+
+  evidence AuditEvidence[]
+
+  @@map("audit_findings")
+}
+
+enum CompletionItemStatus {
+  PENDING
+  COMPLETE
+  NOT_APPLICABLE
+}
+
+// Completion checklist (SRS 33). EngagementsService seeds a standard set of
+// items (subsequent events, going concern, management representation
+// letter, ...) when completion starts - see STANDARD_COMPLETION_CHECKLIST.
+model EngagementCompletionItem {
+  id            String               @id @default(uuid())
+  engagementId  String
+  engagement    Engagement           @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  item          String
+  status        CompletionItemStatus @default(PENDING)
+  completedById String?
+  completedBy   User?                @relation("CompletionItemCompletedBy", fields: [completedById], references: [id])
+  completedAt   DateTime?
+  notes         String?
+  createdAt     DateTime             @default(now())
+
+  @@unique([engagementId, item])
+  @@map("engagement_completion_items")
+}
+
+enum JudgmentStatus {
+  OPEN
+  DECIDED
+  APPROVED
+}
+
+enum JudgmentRisk {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// Professional Judgment Engine (SRS 35): Question -> Facts -> Applicable
+// standards -> Possible treatments -> Professional decision -> Approval.
+// Deliberately does NOT auto-generate "AI analysis" or "AI recommendation"
+// text - there is no LLM wired into this app process, and fabricating
+// plausible-sounding professional reasoning would be actively misleading
+// rather than a defensible heuristic (unlike e.g. Phase 2's classification
+// suggester). `recommendation`/`decision` are filled by the professional
+// (or, later, a real model call slotted into ProfessionalJudgmentService).
+// `decidedById` and `approvedById` are enforced distinct, same as
+// Engagement conclusion/approval.
+model ProfessionalJudgmentCase {
+  id                  String         @id @default(uuid())
+  clientId            String
+  client              Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  engagementId        String?
+  engagement          Engagement?    @relation(fields: [engagementId], references: [id])
+  question            String
+  facts               String
+  applicableStandards String?
+  possibleTreatments  Json?
+  recommendation      String?
+  risk                JudgmentRisk   @default(MEDIUM)
+  status              JudgmentStatus @default(OPEN)
+
+  decision    String?
+  decidedById String?
+  decidedBy   User?     @relation("JudgmentDecidedBy", fields: [decidedById], references: [id])
+  decidedAt   DateTime?
+
+  approvedById String?
+  approvedBy   User?     @relation("JudgmentApprovedBy", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+
+  createdById String
+  createdBy   User     @relation("JudgmentCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@map("professional_judgment_cases")
 }
 
 // ---------------------------------------------------------------------------
@@ -627,7 +991,8 @@ model Document {
   relatedEntityId   String?
   createdAt         DateTime @default(now())
 
-  extraction DocumentExtraction?
+  extraction    DocumentExtraction?
+  auditEvidence AuditEvidence[]
 
   @@map("documents")
 }

@@ -8,11 +8,15 @@ Jurisdiction-configurable, with Saudi Arabia (ZATCA e-invoicing, VAT, Zakat) as 
 configuration.
 
 This repository currently implements **Phase 1 (Professional Foundation)**, **Phase 2
-(Accounting Automation)**, and **Phase 3 (Saudi Compliance)**: multi-tenancy, RBAC, client
-onboarding, a double-entry accounting core, AR/AP, payments, fixed assets, inventory, expense
-claims, payroll, bank reconciliation, document field extraction, rule-based posting suggestions,
-a versioned regulatory rules engine, VAT/WHT/Zakat returns, ZATCA-shaped e-invoicing (local QR +
-XML generation, not a live Fatoora integration), and a compliance calendar — as real, running,
+(Accounting Automation)**, **Phase 3 (Saudi Compliance)**, and **Phase 4 (Professional CA)**:
+multi-tenancy, RBAC, client onboarding, a double-entry accounting core, AR/AP, payments, fixed
+assets, inventory, expense claims, payroll, bank reconciliation, document field extraction,
+rule-based posting suggestions, a versioned regulatory rules engine, VAT/WHT/Zakat returns,
+ZATCA-shaped e-invoicing (local QR + XML generation, not a live Fatoora integration), a compliance
+calendar, engagements (acceptance, materiality, team, completion, conclude/approve), an
+independence engine, an audit module (risk register, procedures, evidence, findings), and a
+professional judgment engine — with identity-based segregation of duties (an approver can never be
+the same person as the preparer) enforced across all three closing workflows — as real, running,
 tested code. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for exactly what's built vs. the
 full roadmap.
 

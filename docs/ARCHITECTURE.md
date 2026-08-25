@@ -6,9 +6,9 @@ eventual Professional Accountant OS (99 sections, ~50 modules). Building all
 of it at once was explicitly ruled out by the SRS itself (§98, "Do not
 attempt to build all 50 modules simultaneously") — this repository
 implements SRS §98's **Phase 1 (Professional Foundation)**,
-**Phase 2 (Accounting Automation)**, and **Phase 3 (Saudi Compliance)**
-as real, running, tested code, and leaves Phases 4-6 as a concrete
-roadmap below.
+**Phase 2 (Accounting Automation)**, **Phase 3 (Saudi Compliance)**, and
+**Phase 4 (Professional CA)** as real, running, tested code, and leaves
+Phases 5-6 as a concrete roadmap below.
 
 ## Stack
 
@@ -222,6 +222,73 @@ the confirmation logged for this phase in the session that built it.
   existing workspace, plus an "E-invoice" action on posted invoices that
   displays the QR code and XML inline.
 
+### Phase 4 - Professional CA
+
+Maps to SRS §98 Phase 4. The theme here isn't a new subsystem-scale v1 the
+way Phase 2/3 had (OCR, ZATCA) - it's *identity-level* segregation of duties
+(SRS §55): three workflows below don't just gate an action behind a
+permission, they reject an actor who is the same person that performed the
+prior step, regardless of what permissions that person holds. All three
+follow the same shape - `ForbiddenException` thrown directly in the service,
+not something a permission bundle can route around.
+
+- **Engagements** (SRS §33): `Engagement` gained acceptance
+  (PENDING/ACCEPTED/DECLINED), materiality (`materialityAmount` +
+  `materialityBasis`), scope, a team roster (`EngagementTeamMember`,
+  PARTNER/MANAGER/SENIOR/STAFF), a completion checklist, and a
+  conclude → approve close-out. `EngagementsService.conclude()` refuses to
+  run while any completion item is still `PENDING` (`COMPLETE` or
+  `NOT_APPLICABLE` both count as resolved); `approve()` refuses when
+  `approvedById` would equal `concludedById` - the conclusion has to be
+  signed off by someone other than whoever wrote it.
+- **Independence Engine** (SRS §36): `IndependenceCheck` logs eight
+  standard threat categories (financial interest, close relationship, prior
+  engagement conflict, prohibited activity, self-review, familiarity,
+  advocacy, management participation) as booleans; any flag set to `true`
+  computes `status = EXCEPTION` (else `CLEARED`) and is mirrored onto
+  `Engagement.independenceStatus` so it's visible without opening the
+  check itself. An exception can't be resolved by the same user who logged
+  it (`IndependenceService.resolve()` throws `ForbiddenException`
+  otherwise) - resolution is `SAFEGUARDED` or `DECLINED_ENGAGEMENT`, both
+  requiring notes.
+- **Audit module** (SRS §§33-34): a risk register (`AuditRisk` - category
+  INHERENT/CONTROL/DETECTION/FRAUD, likelihood × impact, an assertion from
+  SRS §34's list, optional significant-risk flag) feeds audit procedures
+  (`AuditProcedure` - CONTROL_TEST/SUBSTANTIVE_TEST/ANALYTICAL_PROCEDURE,
+  optionally linked to a risk, sample size, NOT_STARTED → IN_PROGRESS →
+  COMPLETED with `performedById`/`performedAt` stamped on the first status
+  change), which produce evidence (`AuditEvidence` - linkable to a
+  procedure, a finding, and/or an uploaded `Document`) and findings
+  (`AuditFinding` - EXCEPTION/MISSTATEMENT/CONTROL_DEFICIENCY, an amount,
+  severity, OPEN → RESOLVED/ACCEPTED with a management response). Named
+  `audit-work` in the codebase (not `audit`) to stay distinct from the
+  pre-existing Phase 1 audit *trail* module (`AuditLog`) - two genuinely
+  different meanings of "audit" that share a name in the SRS.
+- **Professional Judgment Engine** (SRS §35): `ProfessionalJudgmentCase`
+  models Question → Facts → Applicable standards → Possible treatments
+  → Decision → Approval, optionally tied to an engagement. Deliberately
+  does **not** auto-generate the "AI analysis"/recommendation text the SRS
+  describes - there's no LLM wired into this app process, and a
+  plausible-sounding fabricated recommendation on an accounting judgment
+  call would be actively misleading (unlike Phase 2's classification
+  heuristic, which is explicit about being a heuristic).
+  `possibleTreatments`, `decision`, and `recommendation` are filled in by
+  the professional. `decidedById` and `approvedById` are enforced distinct
+  the same way as engagement conclusion.
+- **New role**: `AUDITOR` (SRS §3.4) - `VIEW_CLIENT`, `MANAGE_ENGAGEMENTS`,
+  `MANAGE_INDEPENDENCE`, `MANAGE_AUDIT`, `MANAGE_PROFESSIONAL_JUDGMENT`,
+  plus reporting/document access - deliberately excludes `APPROVE_AUDIT`
+  and `APPROVE_PROFESSIONAL_JUDGMENT` so the identity check above isn't the
+  only thing standing between an auditor and self-approval; `PARTNER`
+  holds every Phase 4 permission including both approve codes.
+- **Frontend**: an Engagements tab (list + create, and a detail view
+  covering acceptance, team, independence checks, risk register,
+  procedures, evidence, findings, completion checklist, and
+  conclude/approve) and a Judgment tab (create/decide/approve), each
+  showing a plain-language note (not just a disabled button) when the
+  signed-in user is the one who would be blocked from approving their own
+  work.
+
 ### Deliberate simplifications
 
 These are scoped out on purpose, not overlooked - each is a natural
@@ -255,8 +322,22 @@ extension point for a later pass:
 - E-invoicing stops at local TLV/QR + illustrative XML generation - no
   ZATCA API integration, no cryptographic invoice signing (no certificate
   available in this environment), no live clearance/reporting.
-- No audit workpapers, engagements, independence checks, professional
-  judgment engine, or the 20 AI agents yet (see Roadmap).
+- Engagement team members are added by user ID (a firm user picker isn't
+  wired into that form - `GET /users` requires `MANAGE_USERS`, which the
+  `AUDITOR` role deliberately doesn't hold, so it can't double as a lookup
+  for every role that can add a team member).
+  The completion checklist is one fixed standard list
+  (`STANDARD_COMPLETION_CHECKLIST`) seeded per engagement, not yet
+  templated per service type or jurisdiction.
+- Audit procedures/evidence/findings have no sampling methodology or
+  statistical projection - `sampleSize` is just an integer the preparer
+  records, not computed.
+- No workpaper document generation (engagement letters, management
+  representation letters, audit reports) - `Document` upload/linkage
+  exists, but nothing in this phase drafts those documents.
+- No AI agents yet (see Roadmap - SRS §37's 20 agents are Phase 5) -
+  Phase 4's professional judgment engine is deliberately the human-filled
+  version described above.
 
 ## Repository layout
 
@@ -293,6 +374,11 @@ apps/
       zakat/             Zakat base computation, adjustments, return filing
       einvoice/          ZATCA-shaped QR (TLV) + illustrative XML generation
       compliance/        deadline calendar (bucketed dashboard)
+      engagements/       acceptance, materiality, team, completion, conclude/approve
+      independence/      independence threat checks + resolution
+      audit-work/        risk register, procedures, evidence, findings (audit *work*,
+                          distinct from audit/ = the audit *trail*/AuditLog module)
+      judgment/          professional judgment cases (decide/approve)
     test/             vitest integration tests against a real Postgres DB
   web/              Next.js frontend (firm workspace)
 packages/
@@ -332,15 +418,10 @@ DATABASE_URL=<test-db-url> pnpm --filter @accountant-os/db exec prisma migrate d
 pnpm --filter @accountant-os/api test
 ```
 
-## Roadmap (SRS §98 Phases 4-6)
+## Roadmap (SRS §98 Phases 5-6)
 
 Not built yet - listed here so scope is explicit rather than implied:
 
-- **Phase 4 - Professional CA**: engagements, audit module (planning,
-  risk, procedures, evidence, findings, completion - SRS §33-34),
-  independence checks (SRS §36), the professional judgment engine (SRS
-  §35), segregation-of-duties enforcement (SRS §55) beyond today's
-  create/submit/approve/post permission splits.
 - **Phase 5 - AI workforce**: the 20 agents in SRS §37 - a real step up
   from this repo's rule-based v1s - all operating under the
   OBSERVE→...→RECORD EVIDENCE model (SRS §38) with the confidence/

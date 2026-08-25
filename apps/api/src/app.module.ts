@@ -26,6 +26,10 @@ import { VatModule } from "./vat/vat.module";
 import { WhtModule } from "./wht/wht.module";
 import { ZakatModule } from "./zakat/zakat.module";
 import { EInvoiceModule } from "./einvoice/einvoice.module";
+import { EngagementsModule } from "./engagements/engagements.module";
+import { IndependenceModule } from "./independence/independence.module";
+import { AuditWorkModule } from "./audit-work/audit-work.module";
+import { JudgmentModule } from "./judgment/judgment.module";
 
 @Module({
   imports: [
@@ -56,6 +60,10 @@ import { EInvoiceModule } from "./einvoice/einvoice.module";
     WhtModule,
     ZakatModule,
     EInvoiceModule,
+    EngagementsModule,
+    IndependenceModule,
+    AuditWorkModule,
+    JudgmentModule,
   ],
 })
 export class AppModule {}

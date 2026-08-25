@@ -53,6 +53,13 @@ export const PERMISSIONS = {
   MANAGE_TAX: "MANAGE_TAX", // prepare tax periods/returns, assign WHT categories
   FILE_TAX_RETURNS: "FILE_TAX_RETURNS", // file/post VAT & Zakat returns - separate from preparation (SRS 55)
   MANAGE_COMPLIANCE: "MANAGE_COMPLIANCE", // compliance calendar
+
+  // Phase 4 - Professional CA
+  MANAGE_INDEPENDENCE: "MANAGE_INDEPENDENCE", // log/resolve independence checks (SRS 36)
+  MANAGE_AUDIT: "MANAGE_AUDIT", // risk register, procedures, evidence, findings, completion checklist
+  APPROVE_AUDIT: "APPROVE_AUDIT", // engagement conclusion / partner sign-off (SRS 33 Completion)
+  MANAGE_PROFESSIONAL_JUDGMENT: "MANAGE_PROFESSIONAL_JUDGMENT", // create/decide judgment cases (SRS 35)
+  APPROVE_PROFESSIONAL_JUDGMENT: "APPROVE_PROFESSIONAL_JUDGMENT", // approve a judgment decision - separate from deciding it
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -94,6 +101,24 @@ export const SYSTEM_ROLES: Record<string, { description: string; permissions: Pe
       PERMISSIONS.MANAGE_TAX,
       PERMISSIONS.FILE_TAX_RETURNS,
       PERMISSIONS.MANAGE_COMPLIANCE,
+      PERMISSIONS.MANAGE_INDEPENDENCE,
+      PERMISSIONS.MANAGE_AUDIT,
+      PERMISSIONS.APPROVE_AUDIT,
+      PERMISSIONS.MANAGE_PROFESSIONAL_JUDGMENT,
+      PERMISSIONS.APPROVE_PROFESSIONAL_JUDGMENT,
+    ],
+  },
+  AUDITOR: {
+    description: "Auditor - planning, testing, evidence, findings (SRS 3.4)",
+    permissions: [
+      PERMISSIONS.VIEW_CLIENT,
+      PERMISSIONS.MANAGE_ENGAGEMENTS,
+      PERMISSIONS.VIEW_REPORTS,
+      PERMISSIONS.MANAGE_DOCUMENTS,
+      PERMISSIONS.VIEW_DOCUMENTS,
+      PERMISSIONS.MANAGE_INDEPENDENCE,
+      PERMISSIONS.MANAGE_AUDIT,
+      PERMISSIONS.MANAGE_PROFESSIONAL_JUDGMENT,
     ],
   },
   ACCOUNTANT: {

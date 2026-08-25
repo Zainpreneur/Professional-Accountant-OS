@@ -25,6 +25,8 @@ const TABS = [
   { href: "/employees", label: "Employees" },
   { href: "/expenses", label: "Expenses" },
   { href: "/payroll", label: "Payroll" },
+  { href: "/engagements", label: "Engagements" },
+  { href: "/judgment", label: "Judgment" },
   { href: "/compliance", label: "Compliance" },
   { href: "/vat", label: "VAT" },
   { href: "/wht", label: "WHT" },
