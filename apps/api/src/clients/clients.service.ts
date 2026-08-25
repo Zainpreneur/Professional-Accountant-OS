@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
-import { STANDARD_COA_TEMPLATE } from "../accounting/coa/standard-template";
+import { BusinessCompilerService } from "../business-compiler/business-compiler.service";
 import type { CreateClientDto, UpdateClientDto } from "./dto/create-client.dto";
 import type { RequestUser } from "../common/types";
 
@@ -10,6 +10,7 @@ export class ClientsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly businessCompiler: BusinessCompilerService,
   ) {}
 
   list(firmId: string) {
@@ -22,10 +23,20 @@ export class ClientsService {
     return client;
   }
 
-  // Client onboarding (SRS 6): creates the Client plus a starter chart of
-  // accounts, a current fiscal year, and its monthly accounting periods, so
-  // the client can start recording transactions immediately.
+  // Client onboarding (SRS 6, 59-60): creates the Client plus a starter
+  // chart of accounts composed by the Business Compiler from the client's
+  // jurisdiction and business category (not one fixed template for every
+  // client - see BusinessCompilerService), a current fiscal year, and its
+  // monthly accounting periods, so the client can start recording
+  // transactions immediately. resolveBusinessCategory/resolveJurisdiction
+  // throw a 400 for an unrecognized value before anything is written, and
+  // normalize casing/whitespace so what lands on the Client record always
+  // matches a real template.
   async create(actor: RequestUser, dto: CreateClientDto) {
+    const businessCategory = this.businessCompiler.resolveBusinessCategory(dto.businessCategory);
+    const jurisdiction = this.businessCompiler.resolveJurisdiction(dto.jurisdiction);
+    const { accounts } = this.businessCompiler.compile(businessCategory, jurisdiction);
+
     const client = await this.prisma.$transaction(async (tx) => {
       const created = await tx.client.create({
         data: {
@@ -33,15 +44,15 @@ export class ClientsService {
           legalName: dto.legalName,
           tradingName: dto.tradingName,
           entityType: dto.entityType,
-          businessCategory: dto.businessCategory,
-          jurisdiction: dto.jurisdiction ?? "SA",
+          businessCategory,
+          jurisdiction,
           taxRegistrationNumber: dto.taxRegistrationNumber,
-          baseCurrency: dto.baseCurrency ?? "SAR",
+          baseCurrency: dto.baseCurrency ?? this.businessCompiler.defaultCurrencyFor(jurisdiction),
         },
       });
 
       await tx.chartOfAccount.createMany({
-        data: STANDARD_COA_TEMPLATE.map((a) => ({ ...a, clientId: created.id })),
+        data: accounts.map((a) => ({ ...a, clientId: created.id })),
       });
 
       const now = new Date();

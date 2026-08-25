@@ -13,16 +13,33 @@ interface Client {
   status: string;
   createdAt: string;
 }
+interface BusinessCategory {
+  code: string;
+  label: string;
+  description: string;
+  extraAccountCount: number;
+}
+interface Jurisdiction {
+  code: string;
+  label: string;
+  currency: string;
+  requiresVat: boolean;
+  requiresWht: boolean;
+  requiresZakat: boolean;
+  extraAccountCount: number;
+}
 
 export default function FirmDashboardPage() {
   const [clients, setClients] = useState<Client[] | null>(null);
+  const [categories, setCategories] = useState<BusinessCategory[]>([]);
+  const [jurisdictions, setJurisdictions] = useState<Jurisdiction[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     legalName: "",
     tradingName: "",
     entityType: "",
-    businessCategory: "",
+    businessCategory: "PROFESSIONAL_SERVICES",
     jurisdiction: "SA",
     taxRegistrationNumber: "",
   });
@@ -30,7 +47,14 @@ export default function FirmDashboardPage() {
 
   async function load() {
     try {
-      setClients(await api<Client[]>("/clients"));
+      const [c, cats, jurs] = await Promise.all([
+        api<Client[]>("/clients"),
+        api<BusinessCategory[]>("/business-compiler/categories"),
+        api<Jurisdiction[]>("/business-compiler/jurisdictions"),
+      ]);
+      setClients(c);
+      setCategories(cats);
+      setJurisdictions(jurs);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load clients");
     }
@@ -39,6 +63,9 @@ export default function FirmDashboardPage() {
   useEffect(() => {
     load();
   }, []);
+
+  const selectedCategory = categories.find((c) => c.code === form.businessCategory);
+  const selectedJurisdiction = jurisdictions.find((j) => j.code === form.jurisdiction);
 
   function update<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -50,7 +77,7 @@ export default function FirmDashboardPage() {
     setError(null);
     try {
       await api("/clients", { method: "POST", body: form });
-      setForm({ legalName: "", tradingName: "", entityType: "", businessCategory: "", jurisdiction: "SA", taxRegistrationNumber: "" });
+      setForm({ legalName: "", tradingName: "", entityType: "", businessCategory: "PROFESSIONAL_SERVICES", jurisdiction: "SA", taxRegistrationNumber: "" });
       setShowForm(false);
       await load();
     } catch (err) {
@@ -90,15 +117,23 @@ export default function FirmDashboardPage() {
             </div>
             <div className="stack" style={{ flex: 1 }}>
               <label>Business category</label>
-              <input
-                placeholder="e.g. Retail"
-                value={form.businessCategory}
-                onChange={(e) => update("businessCategory", e.target.value)}
-              />
+              <select value={form.businessCategory} onChange={(e) => update("businessCategory", e.target.value)}>
+                {categories.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="stack" style={{ flex: 1 }}>
               <label>Jurisdiction</label>
-              <input value={form.jurisdiction} onChange={(e) => update("jurisdiction", e.target.value)} />
+              <select value={form.jurisdiction} onChange={(e) => update("jurisdiction", e.target.value)}>
+                {jurisdictions.map((j) => (
+                  <option key={j.code} value={j.code}>
+                    {j.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <div className="stack">
@@ -108,6 +143,25 @@ export default function FirmDashboardPage() {
               onChange={(e) => update("taxRegistrationNumber", e.target.value)}
             />
           </div>
+          {(selectedCategory || selectedJurisdiction) && (
+            <div className="muted">
+              The Business Compiler (SRS §59-60) will generate this client&apos;s starting chart of accounts:{" "}
+              {selectedCategory?.description}
+              {selectedJurisdiction && (
+                <>
+                  {" "}Jurisdiction: {selectedJurisdiction.label} (
+                  {[
+                    selectedJurisdiction.requiresVat && "VAT",
+                    selectedJurisdiction.requiresWht && "WHT",
+                    selectedJurisdiction.requiresZakat && "Zakat",
+                  ]
+                    .filter(Boolean)
+                    .join(", ") || "no VAT/WHT/Zakat accounts"}
+                  , currency {selectedJurisdiction.currency}).
+                </>
+              )}
+            </div>
+          )}
           {error && <div className="error">{error}</div>}
           <div>
             <button type="submit" disabled={submitting}>

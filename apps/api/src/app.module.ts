@@ -31,6 +31,7 @@ import { IndependenceModule } from "./independence/independence.module";
 import { AuditWorkModule } from "./audit-work/audit-work.module";
 import { JudgmentModule } from "./judgment/judgment.module";
 import { AiWorkforceModule } from "./ai-workforce/ai-workforce.module";
+import { BusinessCompilerModule } from "./business-compiler/business-compiler.module";
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { AiWorkforceModule } from "./ai-workforce/ai-workforce.module";
     AuditWorkModule,
     JudgmentModule,
     AiWorkforceModule,
+    BusinessCompilerModule,
   ],
 })
 export class AppModule {}

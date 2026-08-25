@@ -5,10 +5,14 @@ This document tracks what is actually built against the target in
 eventual Professional Accountant OS (99 sections, ~50 modules). Building all
 of it at once was explicitly ruled out by the SRS itself (§98, "Do not
 attempt to build all 50 modules simultaneously") — this repository
-implements SRS §98's **Phase 1 (Professional Foundation)**,
-**Phase 2 (Accounting Automation)**, **Phase 3 (Saudi Compliance)**,
-**Phase 4 (Professional CA)**, and **Phase 5 (AI Workforce)** as real,
-running, tested code, and leaves Phase 6 as a concrete roadmap below.
+implements all six of SRS §98's phases — **Phase 1 (Professional
+Foundation)**, **Phase 2 (Accounting Automation)**, **Phase 3 (Saudi
+Compliance)**, **Phase 4 (Professional CA)**, **Phase 5 (AI Workforce)**,
+and **Phase 6 (Universal Business Compiler)** — as real, running, tested
+code. "Implements" means each phase's MVP-scoped slice, deliberately, not
+every module the full SRS describes - see each phase's section below and
+"Deliberate simplifications" for exactly where the line was drawn, and
+"Still not built" at the end of this document for what's genuinely absent.
 
 ## Stack
 
@@ -364,6 +368,67 @@ suggester, formalized into a durable, reviewable framework.
   describes (with counts as a KPI row), an inline review form per finding
   (decision + notes), and a collapsible review history table.
 
+### Phase 6 - Universal Business Compiler
+
+Maps to SRS §98 Phase 6, itself a narrowed slice of SRS §59's full compiler
+vision. SRS §59 lists the compiler's output as Chart of Accounts, Data
+Models, Forms, Fields, Workflows, Tax Rules, Accounting Rules, Dashboards,
+Reports, Permissions, AI Agents, Integrations, and Compliance Calendar -
+this phase builds exactly one of those, chart-of-accounts composition,
+because it's the one dimension every other phase's code already depends
+on and can compose without inventing a new subsystem (forms/workflows/
+dashboards/permissions-per-template are still fixed across the app - see
+Deliberate simplifications).
+
+- **The problem this fixes**: every client, regardless of country or
+  industry, used to get the exact same fixed chart of accounts
+  (`STANDARD_COA_TEMPLATE`) - including Saudi-specific VAT/WHT/Zakat
+  accounts even for a client outside Saudi Arabia. `Client.businessCategory`
+  and `Client.jurisdiction` already existed on the schema since Phase 1 but
+  were free-text fields nothing actually read.
+- **Business Category Templates** (SRS §60): 6 of SRS §60's example
+  categories - Professional Services (the baseline, no extra accounts),
+  Retail, Restaurant, Construction, Manufacturing, Healthcare - not all 15
+  listed there. Each is a handful of genuinely industry-specific accounts
+  (e.g. Construction gets Work-in-Progress and Retention Receivable/
+  Payable; Manufacturing gets Raw Materials/WIP/Finished Goods Inventory
+  and Factory Overhead) layered on top of the base template - ordinary
+  accounts a bookkeeper in that industry would expect, not an invented
+  accounting treatment.
+- **Jurisdiction Packs**: 3 packs, not one per country - `SA` (VAT + WHT +
+  Zakat, this app's one fully-modeled jurisdiction since Phase 3's
+  regulatory rules engine only has real seeded content for Saudi Arabia),
+  `AE` (VAT only, demonstrating a different real regime rather than
+  reusing SA's), and `OTHER` (no tax-specific accounts at all - an honest
+  fallback for anywhere else, rather than guessing at a regime this app
+  has no real rules for). A non-VAT client genuinely gets no VAT accounts
+  now, not an unused one sitting in its chart of accounts.
+- **`BusinessCompilerService.compile()`** (`apps/api/src/business-compiler/
+  compile.ts`, a plain function - see below) merges three layers by
+  account code - base, then the jurisdiction pack's accounts, then the
+  business category's accounts - and throws loudly on a code collision
+  between layers rather than silently letting one shadow another; account
+  codes are partitioned by range across the templates specifically to
+  avoid that (see the comments in `templates/*.ts`).
+- **`ClientsService.create()`** now resolves and normalizes
+  `businessCategory`/`jurisdiction` against the known registries (a 400
+  for anything unrecognized, before any row is written) and asks the
+  compiler for the chart of accounts instead of using one fixed template;
+  `baseCurrency` defaults from the jurisdiction pack (e.g. AED for `AE`)
+  when the caller doesn't specify one.
+- **Shared with the seed script, not duplicated**: `packages/db/prisma/
+  seed.ts` used to carry its own hand-copied chart-of-accounts template
+  (the same duplication risk `SYSTEM_ROLES` already avoided by importing
+  from the API package). It now calls the same `compileCoa()` the API
+  uses, via the same relative-import pattern already established for
+  `permissions.ts` - one real implementation, dogfooded by the demo data
+  itself, not two copies that can drift.
+- **Frontend**: the "New client" form's business category and jurisdiction
+  fields are now dropdowns sourced from `GET /business-compiler/
+  categories` and `/jurisdictions` (previously free-text inputs nothing
+  validated), with a live preview of what the compiler will generate
+  before the client is created.
+
 ### Deliberate simplifications
 
 These are scoped out on purpose, not overlooked - each is a natural
@@ -434,6 +499,27 @@ extension point for a later pass:
   close the underlying condition (e.g. approving "period still open"
   doesn't close the period) - the same condition will resurface on the
   next scan until someone actually fixes it via the relevant module.
+- Only chart-of-accounts composition is compiled from the client's
+  jurisdiction/category - SRS §59's other compiler outputs (Forms, Fields,
+  Workflows, Dashboards, Reports, Permissions, AI Agents, Integrations)
+  are still the same fixed set for every client regardless of what they
+  chose at onboarding.
+- 6 business categories (of SRS §60's 15 examples) and 3 jurisdictions
+  (of ~195 countries) - a representative slice proving the composition
+  mechanism works, not a catalog approaching completeness. Adding one is
+  a new entry in `templates/business-category-templates.ts` or
+  `templates/jurisdiction-packs.ts`, not a schema change (see Phase 6 -
+  templates are plain code, not database rows, matching this app's
+  existing `SYSTEM_ROLES` pattern - not something a firm admin can
+  currently create or edit through the product itself).
+- Jurisdiction packs model tax-*account* requirements (VAT/WHT/Zakat: yes
+  or no) for chart-of-accounts purposes only; they don't carry rates -
+  those still come from Phase 3's `RegulatoryRulesService`, which only
+  has real seeded content for `SA`. Selecting `AE` gets a client the right
+  VAT accounts to post to; it does not get real UAE VAT rates or forms.
+- The compiler runs once, at client creation. Changing a client's business
+  category or jurisdiction afterward does not retroactively add or remove
+  chart-of-accounts entries - there's no "re-compile this client" action.
 
 ## Repository layout
 
@@ -476,6 +562,9 @@ apps/
                           distinct from audit/ = the audit *trail*/AuditLog module)
       judgment/          professional judgment cases (decide/approve)
       ai-workforce/      the 8 MVP agent scanners + Professional Review Queue
+      business-compiler/ chart-of-accounts composition (category + jurisdiction
+                          templates); compile.ts is plain functions shared with
+                          packages/db/prisma/seed.ts
     test/             vitest integration tests against a real Postgres DB
   web/              Next.js frontend (firm workspace)
 packages/
@@ -515,24 +604,32 @@ DATABASE_URL=<test-db-url> pnpm --filter @accountant-os/db exec prisma migrate d
 pnpm --filter @accountant-os/api test
 ```
 
-## Roadmap (SRS §98 Phase 6)
+## Roadmap
 
-Not built yet - listed here so scope is explicit rather than implied:
+SRS §98's six phases are all built (each to the MVP-scoped slice described
+in its own section above - "built" doesn't mean "the full SRS module",
+see each phase's "Deliberate simplifications"). What's left is widening
+each phase's slice, plus what SRS §98 never scoped as a phase at all:
 
-- **Phase 6 - Universal Business Compiler**: jurisdiction/industry
-  template packs (SRS §§59-60) that generate chart of accounts, forms,
-  workflows, and dashboards from a client's country/category/framework
-  instead of one fixed template.
+- **Deepen Phase 6's compiler**: SRS §59 also names Forms, Fields,
+  Workflows, Dashboards, Reports, Permissions, AI Agents, and Integrations
+  as compiler outputs - today only Chart of Accounts is templated per
+  business category/jurisdiction. More business categories (of SRS §60's
+  15 examples, 6 are built) and jurisdictions (of ~195 countries, 3 are
+  built - and only `SA` carries real regulatory rates, from Phase 3) are
+  the other natural extension.
 - **The remaining 12 of SRS §37's 20 agents** (Practice Orchestrator,
   Bookkeeping, Evidence, Forecasting, OCR, Fraud/Anomaly, Client
   Communication, Deadline, Quality-Control, and the rest not in Phase 5's
   8-agent MVP list).
 - **LLM-backed agents**: this build's 8 agents are all deterministic
-  heuristics (see Phase 5's "Deliberate simplifications" above) because no
-  LLM API key is wired into this app process. Swapping one in is a strict
+  heuristics (see Phase 5's "Deliberate simplifications") because no LLM
+  API key is wired into this app process. Swapping one in is a strict
   upgrade behind the same `AiAgentRun`/review-queue interface, not a
   rewrite - the same design choice Phase 2's classification suggester made
   for the same reason.
+- **Phase 4's engagement/audit depth**: workpaper document generation,
+  sampling methodology, templated completion checklists per service type.
 
 Also not yet built, needed before any production deployment: the client
 portal's own UI (client-facing views reusing the RBAC/tenancy already in

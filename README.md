@@ -7,20 +7,24 @@ accounting, tax/VAT/Zakat compliance, audit, and professional reporting.
 Jurisdiction-configurable, with Saudi Arabia (ZATCA e-invoicing, VAT, Zakat) as a first-class
 configuration.
 
-This repository currently implements **Phase 1 (Professional Foundation)**, **Phase 2
-(Accounting Automation)**, **Phase 3 (Saudi Compliance)**, **Phase 4 (Professional CA)**, and
-**Phase 5 (AI Workforce)**: multi-tenancy, RBAC, client onboarding, a double-entry accounting
-core, AR/AP, payments, fixed assets, inventory, expense claims, payroll, bank reconciliation,
-document field extraction, rule-based posting suggestions, a versioned regulatory rules engine,
-VAT/WHT/Zakat returns, ZATCA-shaped e-invoicing (local QR + XML generation, not a live Fatoora
-integration), a compliance calendar, engagements (acceptance, materiality, team, completion,
-conclude/approve), an independence engine, an audit module (risk register, procedures, evidence,
-findings), a professional judgment engine — with identity-based segregation of duties (an approver
-can never be the same person as the preparer) enforced across all three closing workflows — and an
-8-agent AI workforce (SRS §37's MVP subset) that scans real client data and surfaces findings to a
-color-coded Professional Review Queue, never posting or filing anything on its own — as real,
-running, tested code. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for exactly what's built
-vs. the full roadmap.
+This repository implements all six of SRS §98's MVP-to-full-platform phases — **Phase 1
+(Professional Foundation)**, **Phase 2 (Accounting Automation)**, **Phase 3 (Saudi Compliance)**,
+**Phase 4 (Professional CA)**, **Phase 5 (AI Workforce)**, and **Phase 6 (Universal Business
+Compiler)** — as real, running, tested code: multi-tenancy, RBAC, client onboarding, a
+double-entry accounting core, AR/AP, payments, fixed assets, inventory, expense claims, payroll,
+bank reconciliation, document field extraction, rule-based posting suggestions, a versioned
+regulatory rules engine, VAT/WHT/Zakat returns, ZATCA-shaped e-invoicing (local QR + XML
+generation, not a live Fatoora integration), a compliance calendar, engagements (acceptance,
+materiality, team, completion, conclude/approve), an independence engine, an audit module (risk
+register, procedures, evidence, findings), a professional judgment engine — with identity-based
+segregation of duties (an approver can never be the same person as the preparer) enforced across
+all three closing workflows — an 8-agent AI workforce (SRS §37's MVP subset) that scans real
+client data and surfaces findings to a color-coded Professional Review Queue, never posting or
+filing anything on its own, and a Business Compiler that composes each new client's chart of
+accounts from its business category and jurisdiction (6 industry templates × 3 jurisdiction tax
+packs) instead of one fixed template for everyone. Each phase is a deliberately MVP-scoped slice,
+not the entire SRS module it maps to — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for
+exactly what's built vs. what's still simplified or not built at all.
 
 ## Documentation
 
