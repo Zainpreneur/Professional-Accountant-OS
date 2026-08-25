@@ -6,9 +6,9 @@ eventual Professional Accountant OS (99 sections, ~50 modules). Building all
 of it at once was explicitly ruled out by the SRS itself (§98, "Do not
 attempt to build all 50 modules simultaneously") — this repository
 implements SRS §98's **Phase 1 (Professional Foundation)**,
-**Phase 2 (Accounting Automation)**, **Phase 3 (Saudi Compliance)**, and
-**Phase 4 (Professional CA)** as real, running, tested code, and leaves
-Phases 5-6 as a concrete roadmap below.
+**Phase 2 (Accounting Automation)**, **Phase 3 (Saudi Compliance)**,
+**Phase 4 (Professional CA)**, and **Phase 5 (AI Workforce)** as real,
+running, tested code, and leaves Phase 6 as a concrete roadmap below.
 
 ## Stack
 
@@ -289,6 +289,81 @@ not something a permission bundle can route around.
   signed-in user is the one who would be blocked from approving their own
   work.
 
+### Phase 5 - AI Workforce
+
+Maps to SRS §98 Phase 5, which scopes the full 20-agent roster (SRS §37)
+down to 8 for the MVP: Accounting, Tax, Audit, Reconciliation, Reporting,
+Document, Compliance, Financial Analyst. This phase's honest-v1 boundary
+(confirmed with the user before building) is stricter than Phase 2/3's:
+there is no LLM API key wired into this app process (only Claude Code's
+own credentials, which have no business being embedded in the product), so
+every agent's "intelligence" is a deterministic heuristic over this
+client's *real* data - the same honest-v1 spirit as Phase 2's classification
+suggester, formalized into a durable, reviewable framework.
+
+- **The operating model** (SRS §38) is `AiAgentRun` (`packages/db/prisma/
+  schema.prisma`): one row per finding, and the row *is* the OBSERVE →
+  ... → RECORD EVIDENCE pipeline made durable. `observation`/`reasoning`
+  cite the actual source records the finding was computed from (an
+  entityType/entityId pointer plus real numbers/dates/IDs interpolated
+  into the text - never LLM prose) - SRS §67's "cite source records, show
+  calculations, avoid fabricated information". `confidence`/
+  `dataCompleteness`/`evidenceQuality`/`ruleCertainty` are SRS §39's
+  per-recommendation transparency fields. `recommendedAction` tops out at
+  `ESCALATE_TO_REVIEW` as a *label* on the row, never an executed action -
+  no agent in this build ever writes to a domain table (SRS §4: AI never
+  has final authority over a posting or professional conclusion), so
+  `humanReviewRequired` is always true.
+- **The 8 agents** (`apps/api/src/ai-workforce/ai-workforce.agents.ts`),
+  each a real, testable query:
+  - **Accounting** - draft journals unposted for more than 7 days.
+  - **Tax** - active suppliers with a bill in the last 90 days but no WHT
+    category assigned (SRS §28's calculation would otherwise silently have
+    nothing to work with).
+  - **Audit** - on every IN_PROGRESS engagement: a significant risk with
+    zero linked procedures, and any still-OPEN finding (severity maps
+    straight onto the review-queue tier below).
+  - **Reconciliation** - bank statement lines UNMATCHED for more than 14
+    days, escalated further when the amount is large (≥10,000).
+  - **Reporting** - accounting periods still OPEN past their end date, and
+    (a defensive live check the ledger invariants should never actually
+    let happen) an out-of-balance trial balance.
+  - **Document** - reuses Phase 2's Document Intelligence: extractions
+    that failed outright, or completed under a 60% confidence.
+  - **Compliance** - reuses `ComplianceCalendarService`'s own bucketing
+    (SRS §47): surfaces its OVERDUE and DUE_TODAY deadlines into the same
+    queue every other agent's findings land in, rather than a second
+    calendar implementation.
+  - **Financial Analyst** - compares revenue and expense totals between
+    the two most recent accounting periods (summed live from posted
+    `JournalLine`s, via each period's own `periodId` - not a date-range
+    guess) and flags a ≥25% swing, citing both periods' actual totals.
+- **Professional Review Queue** (SRS §68): `AiWorkforceService.queue()`
+  groups open findings into the five color-coded tiers (🔴 Professional
+  judgment / 🟠 CA review / 🟡 Accountant review / 🔵 Client clarification /
+  🟢 Auto-validated) - this *is* the primary interface between the AI
+  workforce and the professional, per the SRS. `review()` records a human
+  decision (APPROVED/REJECTED/OVERRIDDEN + notes) against a finding; it
+  does not execute anything itself, so a finding whose underlying
+  condition hasn't actually been fixed (e.g. the period is still open)
+  will legitimately reappear the next time that agent runs - reviewing
+  isn't the same as resolving.
+- **Idempotent re-runs**: before creating a row, `AiWorkforceService`
+  checks for an identical still-`OPEN` finding (same client/agent/entity/
+  title) and skips it, so re-running an agent doesn't spam duplicates of a
+  condition that hasn't changed.
+- **New permissions**: `MANAGE_AI_AGENTS` (trigger a scan) and
+  `REVIEW_AI_FINDINGS` (act on a finding) - granted to `ACCOUNTANT`,
+  `AUDITOR`, and `PARTNER` alike, since day-to-day review (an unmatched
+  bank line, a missing WHT category) is routine operational work, not a
+  second check on another professional's decision the way Phase 4's
+  identity-based segregation is. `FIRM_OWNER` holds both via the full
+  permission set as usual.
+- **Frontend**: an "AI Workforce" tab - per-agent and "run all" trigger
+  buttons, the review queue grouped and color-coded exactly as SRS §68
+  describes (with counts as a KPI row), an inline review form per finding
+  (decision + notes), and a collapsible review history table.
+
 ### Deliberate simplifications
 
 These are scoped out on purpose, not overlooked - each is a natural
@@ -335,9 +410,30 @@ extension point for a later pass:
 - No workpaper document generation (engagement letters, management
   representation letters, audit reports) - `Document` upload/linkage
   exists, but nothing in this phase drafts those documents.
-- No AI agents yet (see Roadmap - SRS §37's 20 agents are Phase 5) -
-  Phase 4's professional judgment engine is deliberately the human-filled
-  version described above.
+- Phase 4's professional judgment engine is deliberately the human-filled
+  version described above - Phase 5's agents don't touch it.
+- Only 8 of SRS §37's 20 agents are built (the exact MVP subset SRS §98
+  names for this phase) - Practice Orchestrator, Bookkeeping,
+  Reconciliation-as-a-separate-agent-from-Reporting, Evidence,
+  Forecasting, OCR, Fraud/Anomaly, Client Communication, Deadline, and
+  Quality-Control agents are not yet built.
+- No agent auto-executes anything, even at high confidence -
+  `AUTO_POST_PERMITTED` exists as a label an agent's finding can carry,
+  but nothing in this build reads it to actually post, file, or modify a
+  record. `AI_POST_LOW_RISK` from SRS §66's permission ladder is
+  deliberately not implemented as a real capability yet - every finding
+  here requires a human review action to lead anywhere.
+- Each agent's threshold (7 days stale, 14 days unmatched, 25% swing, ...)
+  is a fixed constant in `ai-workforce.agents.ts`, not configurable per
+  firm or per client.
+- No cross-client learning, no model weights, no LLM call anywhere in
+  this pipeline - every "AI" judgment here is a deterministic rule a
+  developer could read and reason about, by design (see the honest-v1
+  framing at the top of this section).
+- Reviewing a finding records a human decision about it; it does not
+  close the underlying condition (e.g. approving "period still open"
+  doesn't close the period) - the same condition will resurface on the
+  next scan until someone actually fixes it via the relevant module.
 
 ## Repository layout
 
@@ -379,6 +475,7 @@ apps/
       audit-work/        risk register, procedures, evidence, findings (audit *work*,
                           distinct from audit/ = the audit *trail*/AuditLog module)
       judgment/          professional judgment cases (decide/approve)
+      ai-workforce/      the 8 MVP agent scanners + Professional Review Queue
     test/             vitest integration tests against a real Postgres DB
   web/              Next.js frontend (firm workspace)
 packages/
@@ -418,20 +515,24 @@ DATABASE_URL=<test-db-url> pnpm --filter @accountant-os/db exec prisma migrate d
 pnpm --filter @accountant-os/api test
 ```
 
-## Roadmap (SRS §98 Phases 5-6)
+## Roadmap (SRS §98 Phase 6)
 
 Not built yet - listed here so scope is explicit rather than implied:
 
-- **Phase 5 - AI workforce**: the 20 agents in SRS §37 - a real step up
-  from this repo's rule-based v1s - all operating under the
-  OBSERVE→...→RECORD EVIDENCE model (SRS §38) with the confidence/
-  escalation contract in SRS §39 and the guardrails in SRS §67, including
-  the hard rule that AI never has final authority over a posting or
-  professional conclusion (SRS §4).
 - **Phase 6 - Universal Business Compiler**: jurisdiction/industry
   template packs (SRS §§59-60) that generate chart of accounts, forms,
   workflows, and dashboards from a client's country/category/framework
   instead of one fixed template.
+- **The remaining 12 of SRS §37's 20 agents** (Practice Orchestrator,
+  Bookkeeping, Evidence, Forecasting, OCR, Fraud/Anomaly, Client
+  Communication, Deadline, Quality-Control, and the rest not in Phase 5's
+  8-agent MVP list).
+- **LLM-backed agents**: this build's 8 agents are all deterministic
+  heuristics (see Phase 5's "Deliberate simplifications" above) because no
+  LLM API key is wired into this app process. Swapping one in is a strict
+  upgrade behind the same `AiAgentRun`/review-queue interface, not a
+  rewrite - the same design choice Phase 2's classification suggester made
+  for the same reason.
 
 Also not yet built, needed before any production deployment: the client
 portal's own UI (client-facing views reusing the RBAC/tenancy already in

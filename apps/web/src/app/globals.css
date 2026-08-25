@@ -161,6 +161,28 @@ button.danger {
   color: var(--danger);
 }
 
+/* AI Workforce review-queue severities (SRS 68's red/orange/yellow/blue/green tiers) */
+.badge.professional_judgment {
+  background: #fbeaea;
+  color: var(--danger);
+}
+.badge.ca_review {
+  background: #fdece3;
+  color: #b35900;
+}
+.badge.accountant_review {
+  background: #fdf3e3;
+  color: #9a6b00;
+}
+.badge.client_clarification {
+  background: #e6f0fb;
+  color: #1d5fa8;
+}
+.badge.auto_validated {
+  background: #e4f6ee;
+  color: var(--accent);
+}
+
 .error {
   color: var(--danger);
   font-size: 13px;

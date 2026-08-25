@@ -75,6 +75,7 @@ model User {
   judgmentCasesCreated       ProfessionalJudgmentCase[] @relation("JudgmentCreatedBy")
   judgmentCasesDecided       ProfessionalJudgmentCase[] @relation("JudgmentDecidedBy")
   judgmentCasesApproved      ProfessionalJudgmentCase[] @relation("JudgmentApprovedBy")
+  aiAgentRunsReviewed        AiAgentRun[]               @relation("AiAgentRunReviewedBy")
 
   @@unique([firmId, email])
   @@map("users")
@@ -172,6 +173,7 @@ model Client {
   zakatReturns         ZakatReturn[]
   complianceDeadlines  ComplianceDeadline[]
   judgmentCases        ProfessionalJudgmentCase[]
+  aiAgentRuns          AiAgentRun[]
 
   @@unique([firmId, legalName])
   @@map("clients")
@@ -1655,4 +1657,105 @@ model ComplianceDeadline {
   createdAt         DateTime                 @default(now())
 
   @@map("compliance_deadlines")
+}
+
+// ---------------------------------------------------------------------------
+// AI Workforce (SRS 37-39, 66-68) - Phase 5's MVP subset of the 20-agent
+// roster (SRS 98 Phase 5): Accounting, Tax, Audit, Reconciliation,
+// Reporting, Document, Compliance, Financial Analyst. Every finding an
+// agent produces is one AiAgentRun row - the OBSERVE...RECORD EVIDENCE
+// pipeline (SRS 38) made durable: `observation`/`reasoning` cite the real
+// source records the finding was computed from (SRS 67's "cite source
+// records, show calculations, avoid fabricated information"), and
+// `confidence`/`dataCompleteness`/`ruleCertainty` are SRS 39's per-
+// recommendation transparency fields. No agent here ever writes to the
+// ledger or any other domain table - `recommendedAction` tops out at
+// ESCALATE_TO_REVIEW/AUTO_POST_PERMITTED as a *label*, not an executed
+// action (SRS 4: AI never has final authority over a posting or
+// professional conclusion) - so `humanReviewRequired` is always true in
+// this build. `reviewSeverity` is SRS 68's Professional Review Queue
+// color coding.
+// ---------------------------------------------------------------------------
+
+enum AiAgentType {
+  ACCOUNTING
+  TAX
+  AUDIT
+  RECONCILIATION
+  REPORTING
+  DOCUMENT
+  COMPLIANCE
+  FINANCIAL_ANALYST
+}
+
+enum AiRecommendedAction {
+  NO_ACTION_NEEDED
+  ESCALATE_TO_REVIEW
+  AUTO_POST_PERMITTED
+}
+
+// Mirrors SRS 68's Professional Review Queue emoji tiers, in the order
+// they're commonly listed there (not a severity ranking):
+// PROFESSIONAL_JUDGMENT=red, CA_REVIEW=orange, ACCOUNTANT_REVIEW=yellow,
+// CLIENT_CLARIFICATION=blue, AUTO_VALIDATED=green.
+enum AiReviewSeverity {
+  PROFESSIONAL_JUDGMENT
+  CA_REVIEW
+  ACCOUNTANT_REVIEW
+  CLIENT_CLARIFICATION
+  AUTO_VALIDATED
+}
+
+enum AiRunStatus {
+  OPEN
+  REVIEWED
+}
+
+enum AiReviewDecision {
+  APPROVED
+  REJECTED
+  OVERRIDDEN
+}
+
+model AiAgentRun {
+  id         String      @id @default(uuid())
+  clientId   String
+  client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  agentType  AiAgentType
+  // Polymorphic pointer to the record the finding is about (a Journal, a
+  // Supplier, an AuditFinding, ...) - deliberately not a typed FK since it
+  // varies by agent; entityId is null for a client-wide finding with no
+  // single source row (e.g. an out-of-balance trial balance).
+  entityType String?
+  entityId   String?
+
+  title            String
+  // What raw data the agent looked at (SRS 38 OBSERVE).
+  observation      String
+  // What was computed/concluded and why, citing the actual records above
+  // (SRS 38 UNDERSTAND/RETRIEVE/CALCULATE; SRS 67 "show calculations").
+  reasoning        String
+  confidence       Int // 0-100
+  dataCompleteness Int // 0-100
+  evidenceQuality  String
+  ruleCertainty    String // e.g. "Deterministic threshold" vs "Heuristic pattern match"
+  risk             RiskLevel
+  materiality      Decimal? @db.Decimal(18, 2)
+
+  recommendedAction   AiRecommendedAction
+  reviewSeverity      AiReviewSeverity
+  humanReviewRequired Boolean             @default(true)
+
+  status         AiRunStatus       @default(OPEN)
+  reviewedById   String?
+  reviewedBy     User?             @relation("AiAgentRunReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt     DateTime?
+  reviewDecision AiReviewDecision?
+  reviewNotes    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId, status])
+  @@index([clientId, agentType])
+  @@map("ai_agent_runs")
 }

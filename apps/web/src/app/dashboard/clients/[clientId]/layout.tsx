@@ -31,6 +31,7 @@ const TABS = [
   { href: "/vat", label: "VAT" },
   { href: "/wht", label: "WHT" },
   { href: "/zakat", label: "Zakat" },
+  { href: "/ai-agents", label: "AI Workforce" },
   { href: "/reports", label: "Reports" },
 ];
 

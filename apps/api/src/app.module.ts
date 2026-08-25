@@ -30,6 +30,7 @@ import { EngagementsModule } from "./engagements/engagements.module";
 import { IndependenceModule } from "./independence/independence.module";
 import { AuditWorkModule } from "./audit-work/audit-work.module";
 import { JudgmentModule } from "./judgment/judgment.module";
+import { AiWorkforceModule } from "./ai-workforce/ai-workforce.module";
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { JudgmentModule } from "./judgment/judgment.module";
     IndependenceModule,
     AuditWorkModule,
     JudgmentModule,
+    AiWorkforceModule,
   ],
 })
 export class AppModule {}

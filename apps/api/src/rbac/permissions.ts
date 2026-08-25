@@ -60,6 +60,10 @@ export const PERMISSIONS = {
   APPROVE_AUDIT: "APPROVE_AUDIT", // engagement conclusion / partner sign-off (SRS 33 Completion)
   MANAGE_PROFESSIONAL_JUDGMENT: "MANAGE_PROFESSIONAL_JUDGMENT", // create/decide judgment cases (SRS 35)
   APPROVE_PROFESSIONAL_JUDGMENT: "APPROVE_PROFESSIONAL_JUDGMENT", // approve a judgment decision - separate from deciding it
+
+  // Phase 5 - AI workforce
+  MANAGE_AI_AGENTS: "MANAGE_AI_AGENTS", // trigger an agent scan (SRS 37-38)
+  REVIEW_AI_FINDINGS: "REVIEW_AI_FINDINGS", // act on the Professional Review Queue (SRS 68) - approve/reject/override a finding; no agent here ever posts on its own (SRS 4), so this is the only way a finding leads anywhere
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -106,6 +110,8 @@ export const SYSTEM_ROLES: Record<string, { description: string; permissions: Pe
       PERMISSIONS.APPROVE_AUDIT,
       PERMISSIONS.MANAGE_PROFESSIONAL_JUDGMENT,
       PERMISSIONS.APPROVE_PROFESSIONAL_JUDGMENT,
+      PERMISSIONS.MANAGE_AI_AGENTS,
+      PERMISSIONS.REVIEW_AI_FINDINGS,
     ],
   },
   AUDITOR: {
@@ -119,6 +125,8 @@ export const SYSTEM_ROLES: Record<string, { description: string; permissions: Pe
       PERMISSIONS.MANAGE_INDEPENDENCE,
       PERMISSIONS.MANAGE_AUDIT,
       PERMISSIONS.MANAGE_PROFESSIONAL_JUDGMENT,
+      PERMISSIONS.MANAGE_AI_AGENTS,
+      PERMISSIONS.REVIEW_AI_FINDINGS,
     ],
   },
   ACCOUNTANT: {
@@ -143,6 +151,8 @@ export const SYSTEM_ROLES: Record<string, { description: string; permissions: Pe
       PERMISSIONS.MANAGE_BANKING,
       PERMISSIONS.MANAGE_TAX,
       PERMISSIONS.MANAGE_COMPLIANCE,
+      PERMISSIONS.MANAGE_AI_AGENTS,
+      PERMISSIONS.REVIEW_AI_FINDINGS,
     ],
   },
   CLIENT_ADMIN: {

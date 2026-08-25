@@ -8,17 +8,19 @@ Jurisdiction-configurable, with Saudi Arabia (ZATCA e-invoicing, VAT, Zakat) as 
 configuration.
 
 This repository currently implements **Phase 1 (Professional Foundation)**, **Phase 2
-(Accounting Automation)**, **Phase 3 (Saudi Compliance)**, and **Phase 4 (Professional CA)**:
-multi-tenancy, RBAC, client onboarding, a double-entry accounting core, AR/AP, payments, fixed
-assets, inventory, expense claims, payroll, bank reconciliation, document field extraction,
-rule-based posting suggestions, a versioned regulatory rules engine, VAT/WHT/Zakat returns,
-ZATCA-shaped e-invoicing (local QR + XML generation, not a live Fatoora integration), a compliance
-calendar, engagements (acceptance, materiality, team, completion, conclude/approve), an
-independence engine, an audit module (risk register, procedures, evidence, findings), and a
-professional judgment engine — with identity-based segregation of duties (an approver can never be
-the same person as the preparer) enforced across all three closing workflows — as real, running,
-tested code. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for exactly what's built vs. the
-full roadmap.
+(Accounting Automation)**, **Phase 3 (Saudi Compliance)**, **Phase 4 (Professional CA)**, and
+**Phase 5 (AI Workforce)**: multi-tenancy, RBAC, client onboarding, a double-entry accounting
+core, AR/AP, payments, fixed assets, inventory, expense claims, payroll, bank reconciliation,
+document field extraction, rule-based posting suggestions, a versioned regulatory rules engine,
+VAT/WHT/Zakat returns, ZATCA-shaped e-invoicing (local QR + XML generation, not a live Fatoora
+integration), a compliance calendar, engagements (acceptance, materiality, team, completion,
+conclude/approve), an independence engine, an audit module (risk register, procedures, evidence,
+findings), a professional judgment engine — with identity-based segregation of duties (an approver
+can never be the same person as the preparer) enforced across all three closing workflows — and an
+8-agent AI workforce (SRS §37's MVP subset) that scans real client data and surfaces findings to a
+color-coded Professional Review Queue, never posting or filing anything on its own — as real,
+running, tested code. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for exactly what's built
+vs. the full roadmap.
 
 ## Documentation
 
