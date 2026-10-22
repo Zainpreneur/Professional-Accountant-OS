@@ -7,7 +7,7 @@ export default defineConfig({
     setupFiles: ["./test/setup.ts"],
     testTimeout: 20000,
     hookTimeout: 20000,
-    // Ledger tests share one Postgres connection and rely on per-test unique
+    // Ledger tests share one SQLite connection and rely on per-test unique
     // client names for isolation, not parallel workers.
     fileParallelism: false,
   },

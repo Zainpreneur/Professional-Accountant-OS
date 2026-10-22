@@ -29,8 +29,9 @@ export class AuditService {
         action: entry.action,
         entityType: entry.entityType,
         entityId: entry.entityId,
-        before: entry.before === undefined ? undefined : (entry.before as any),
-        after: entry.after === undefined ? undefined : (entry.after as any),
+        // SQLite has no Json column type, so audit payloads are stored as JSON text.
+        before: entry.before === undefined ? undefined : JSON.stringify(entry.before),
+        after: entry.after === undefined ? undefined : JSON.stringify(entry.after),
       },
     });
   }

@@ -7,7 +7,7 @@ import { AuditService } from "../src/audit/audit.service";
 import { ReportsService } from "../src/reports/reports.service";
 import type { RequestUser } from "../src/common/types";
 
-// Integration tests against a real Postgres database (apps/api/.env.test)
+// Integration tests against a real SQLite database (apps/api/.env.test)
 // proving the accounting core's central invariant (SRS 11, 65): a journal
 // can never be posted unless total debit === total credit, postings are
 // rejected once a period is locked, and a reversal exactly offsets the

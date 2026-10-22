@@ -39,15 +39,14 @@ exactly what's built vs. what's still simplified or not built at all.
 
 ```bash
 pnpm install
-cp .env.example .env                 # adjust DATABASE_URL if needed
-docker compose up -d                 # or point DATABASE_URL at any Postgres 16 you have running
+cp .env.example .env                # defaults are fine for SQLite; the API dev server loads this file
 
 pnpm --filter @accountant-os/db exec prisma migrate deploy
-pnpm db:seed                         # demo firm + client
+pnpm db:seed                         # demo firm + client (creates packages/db/prisma/dev.db)
 #   login: owner@demo-firm.test / Password123!
 
 pnpm dev:api                         # http://localhost:4000/api/v1
-pnpm dev:web                         # http://localhost:3000
+pnpm dev:web                         # http://localhost:3000  (public site at /, sign in at /login)
 ```
 
 ## Repository layout
@@ -55,7 +54,7 @@ pnpm dev:web                         # http://localhost:3000
 ```
 apps/api/     NestJS backend (auth, RBAC, accounting core, AR/AP, payments, reports, documents,
               fixed assets, inventory, payroll, banking, VAT/WHT/Zakat, e-invoicing, compliance)
-apps/web/     Next.js firm workspace
+apps/web/     React + Vite + Tailwind marketing site and firm workspace
 packages/db/  Prisma schema, migrations, seed script
 docs/         SRS + architecture docs
 ```

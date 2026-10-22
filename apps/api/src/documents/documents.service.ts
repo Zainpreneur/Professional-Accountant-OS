@@ -11,7 +11,7 @@ const STORAGE_ROOT = process.env.DOCUMENT_STORAGE_DIR ?? join(process.cwd(), "up
 
 // Document intelligence (SRS 40-41) storage backend. Phase 1 uses local
 // disk with a content-addressed-ish key (uuid + original filename) and
-// keeps all searchable metadata in Postgres; swapping this for S3/object
+// keeps all searchable metadata in SQLite; swapping this for S3/object
 // storage later only touches this one service (storageKey stays a stable
 // opaque string either way).
 @Injectable()

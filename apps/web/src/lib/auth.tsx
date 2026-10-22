@@ -1,7 +1,5 @@
-"use client";
-
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, setToken } from "./api";
 
 export interface CurrentUser {
@@ -31,10 +29,10 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
+  const navigate = useNavigate();
 
   const loadMe = useCallback(async () => {
     try {
@@ -49,7 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    loadMe();
+    void loadMe();
   }, [loadMe]);
 
   const login = useCallback(
@@ -61,9 +59,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       setToken(accessToken);
       await loadMe();
-      router.push("/dashboard");
+      navigate("/dashboard");
     },
-    [loadMe, router],
+    [loadMe, navigate],
   );
 
   const registerFirm = useCallback(
@@ -75,16 +73,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       setToken(accessToken);
       await loadMe();
-      router.push("/dashboard");
+      navigate("/dashboard");
     },
-    [loadMe, router],
+    [loadMe, navigate],
   );
 
   const logout = useCallback(() => {
     setToken(null);
     setUser(null);
-    router.push("/login");
-  }, [router]);
+    navigate("/login", { replace: true });
+  }, [navigate]);
 
   const hasPermission = useCallback(
     (permission: string, clientId?: string) => {

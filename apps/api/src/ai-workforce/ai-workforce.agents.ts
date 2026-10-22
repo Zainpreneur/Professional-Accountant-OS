@@ -271,12 +271,19 @@ export async function scanDocument({ prisma }: AgentContext, clientId: string): 
   return extractions.map((ex) => {
     const failed = ex.status === "FAILED";
     const confidencePct = ex.confidence ? Math.round(Number(ex.confidence) * 100) : 0;
+    // `fields` is JSON text on SQLite (no Json column type).
+    let extractionFields: { error?: string } | null = null;
+    try {
+      extractionFields = ex.fields ? (JSON.parse(ex.fields) as { error?: string }) : null;
+    } catch {
+      extractionFields = null;
+    }
     return {
       entityType: "Document",
       entityId: ex.documentId,
       title: failed ? `Field extraction failed: ${ex.document.fileName}` : `Low-confidence extraction: ${ex.document.fileName} (${confidencePct}%)`,
       observation: failed
-        ? `Extraction on "${ex.document.fileName}" failed. Reason: ${(ex.fields as any)?.error ?? "not a text-based document this v1 can read"}.`
+        ? `Extraction on "${ex.document.fileName}" failed. Reason: ${extractionFields?.error ?? "not a text-based document this v1 can read"}.`
         : `Extraction on "${ex.document.fileName}" completed with ${confidencePct}% confidence - below the 60% threshold this app treats as reliable enough to act on unreviewed.`,
       reasoning: failed
         ? "This build has no OCR engine for image-based/scanned documents - a failed extraction needs either a text-based re-upload or manual entry."

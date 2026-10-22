@@ -1,4 +1,16 @@
-import type { AccountType, ControlAccountType, NormalBalance, Prisma } from "@accountant-os/db";
+import type { Prisma } from "@accountant-os/db";
+
+// SQLite does not support Prisma enums, so these are plain string unions
+// instead of generated enum types.
+export type AccountType = "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
+export type NormalBalance = "DEBIT" | "CREDIT";
+export type ControlAccountType =
+  | "ACCOUNTS_RECEIVABLE"
+  | "ACCOUNTS_PAYABLE"
+  | "BANK"
+  | "CASH"
+  | "VAT_OUTPUT"
+  | "VAT_INPUT";
 
 export type TemplateAccount = Omit<Prisma.ChartOfAccountCreateManyInput, "clientId">;
 

@@ -4,6 +4,21 @@ import { AuditService } from "../audit/audit.service";
 import type { CreateJudgmentCaseDto, DecideJudgmentCaseDto } from "./dto/judgment.dto";
 import type { RequestUser } from "../common/types";
 
+// SQLite has no Json column type, so possibleTreatments is stored as JSON
+// text. Parse it back on the way out to keep the API shape unchanged.
+function parseTreatments(value: string | null): unknown {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function withParsedTreatments<T extends { possibleTreatments: string | null }>(row: T) {
+  return { ...row, possibleTreatments: parseTreatments(row.possibleTreatments) };
+}
+
 // Professional Judgment Engine (SRS 35): Question -> Facts -> Applicable
 // standards -> Possible treatments -> Professional decision -> Approval.
 // Deliberately does not auto-generate "AI analysis"/"AI recommendation"
@@ -19,12 +34,13 @@ export class JudgmentService {
     private readonly audit: AuditService,
   ) {}
 
-  list(clientId: string) {
-    return this.prisma.professionalJudgmentCase.findMany({
+  async list(clientId: string) {
+    const cases = await this.prisma.professionalJudgmentCase.findMany({
       where: { clientId },
       include: { createdBy: true, decidedBy: true, approvedBy: true, engagement: true },
       orderBy: { createdAt: "desc" },
     });
+    return cases.map(withParsedTreatments);
   }
 
   async get(clientId: string, caseId: string) {
@@ -33,7 +49,7 @@ export class JudgmentService {
       include: { createdBy: true, decidedBy: true, approvedBy: true, engagement: true },
     });
     if (!judgmentCase || judgmentCase.clientId !== clientId) throw new NotFoundException("Judgment case not found");
-    return judgmentCase;
+    return withParsedTreatments(judgmentCase);
   }
 
   async create(actor: RequestUser, clientId: string, dto: CreateJudgmentCaseDto) {
@@ -49,7 +65,7 @@ export class JudgmentService {
         question: dto.question,
         facts: dto.facts,
         applicableStandards: dto.applicableStandards,
-        possibleTreatments: dto.possibleTreatments as any,
+        possibleTreatments: dto.possibleTreatments == null ? null : JSON.stringify(dto.possibleTreatments),
         risk: (dto.risk as any) ?? "MEDIUM",
         createdById: actor.id,
       },
@@ -64,7 +80,7 @@ export class JudgmentService {
       entityId: judgmentCase.id,
       after: judgmentCase,
     });
-    return judgmentCase;
+    return withParsedTreatments(judgmentCase);
   }
 
   async decide(actor: RequestUser, clientId: string, caseId: string, dto: DecideJudgmentCaseDto) {
@@ -91,7 +107,7 @@ export class JudgmentService {
       entityId: caseId,
       after: { decision: dto.decision },
     });
-    return updated;
+    return withParsedTreatments(updated);
   }
 
   async approve(actor: RequestUser, clientId: string, caseId: string) {
@@ -115,6 +131,6 @@ export class JudgmentService {
       entityId: caseId,
       after: { approvedById: actor.id },
     });
-    return updated;
+    return withParsedTreatments(updated);
   }
 }

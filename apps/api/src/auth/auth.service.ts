@@ -34,7 +34,7 @@ export class AuthService {
           firmId: firm.id,
           name: "FIRM_OWNER",
           description: ownerRoleDef.description,
-          permissions: ownerRoleDef.permissions,
+          permissions: JSON.stringify(ownerRoleDef.permissions),
         },
       });
 

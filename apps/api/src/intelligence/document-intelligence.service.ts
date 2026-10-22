@@ -13,6 +13,17 @@ const pdfParse: (buffer: Buffer) => Promise<{ text: string }> = require("pdf-par
 
 const MAX_STORED_TEXT_LENGTH = 20000;
 
+// SQLite has no Json column type, so `fields` is stored as a JSON string.
+// Parse it back on the way out so the public API shape stays unchanged.
+function parseFields<T>(value: string | null): T | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
 // Document Intelligence v1 (SRS 40). Handles text-based PDFs and plain
 // text/CSV; image-based (scanned) documents are explicitly unsupported
 // here - image OCR (e.g. Tesseract) needs a system binary this environment
@@ -55,7 +66,7 @@ export class DocumentIntelligenceService {
       update: {
         status: "COMPLETED",
         extractedText: text.slice(0, MAX_STORED_TEXT_LENGTH),
-        fields: fields as any,
+        fields: JSON.stringify(fields),
         confidence,
         processedAt: new Date(),
       },
@@ -63,7 +74,7 @@ export class DocumentIntelligenceService {
         documentId,
         status: "COMPLETED",
         extractedText: text.slice(0, MAX_STORED_TEXT_LENGTH),
-        fields: fields as any,
+        fields: JSON.stringify(fields),
         confidence,
         processedAt: new Date(),
       },
@@ -79,19 +90,20 @@ export class DocumentIntelligenceService {
       after: { fields, confidence },
     });
 
-    return extraction;
+    return { ...extraction, fields: parseFields(extraction.fields) };
   }
 
   async get(clientId: string, documentId: string) {
     await this.documents.getDocumentAndPath(clientId, documentId); // tenancy check
-    return this.prisma.documentExtraction.findUnique({ where: { documentId } });
+    const extraction = await this.prisma.documentExtraction.findUnique({ where: { documentId } });
+    return extraction ? { ...extraction, fields: parseFields(extraction.fields) } : extraction;
   }
 
   private async saveFailed(actor: RequestUser, clientId: string, documentId: string, reason: string) {
     const extraction = await this.prisma.documentExtraction.upsert({
       where: { documentId },
-      update: { status: "FAILED", fields: { error: reason } as any, confidence: 0, processedAt: new Date() },
-      create: { documentId, status: "FAILED", fields: { error: reason } as any, confidence: 0, processedAt: new Date() },
+      update: { status: "FAILED", fields: JSON.stringify({ error: reason }), confidence: 0, processedAt: new Date() },
+      create: { documentId, status: "FAILED", fields: JSON.stringify({ error: reason }), confidence: 0, processedAt: new Date() },
     });
     await this.audit.log({
       firmId: actor.firmId,

@@ -10,7 +10,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -35,11 +35,6 @@ model Firm {
   @@map("firms")
 }
 
-enum UserStatus {
-  ACTIVE
-  INVITED
-  SUSPENDED
-}
 
 model User {
   id           String     @id @default(uuid())
@@ -49,7 +44,7 @@ model User {
   passwordHash String
   firstName    String
   lastName     String
-  status       UserStatus @default(INVITED)
+  status       String @default("INVITED")
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -91,7 +86,7 @@ model Role {
   firm        Firm?    @relation(fields: [firmId], references: [id], onDelete: Cascade)
   name        String
   description String?
-  permissions String[]
+  permissions String
   createdAt   DateTime @default(now())
 
   userRoles UserRole[]
@@ -121,12 +116,6 @@ model UserRole {
 // Clients & engagements (SRS 6, 77)
 // ---------------------------------------------------------------------------
 
-enum ClientStatus {
-  ONBOARDING
-  ACTIVE
-  SUSPENDED
-  OFFBOARDED
-}
 
 model Client {
   id                    String       @id @default(uuid())
@@ -139,7 +128,7 @@ model Client {
   jurisdiction          String       @default("SA")
   taxRegistrationNumber String?
   baseCurrency          String       @default("SAR")
-  status                ClientStatus @default(ONBOARDING)
+  status                String @default("ONBOARDING")
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 
@@ -194,23 +183,8 @@ model ClientMember {
   @@map("client_members")
 }
 
-enum EngagementStatus {
-  PLANNED
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-}
 
-enum AcceptanceStatus {
-  PENDING
-  ACCEPTED
-  DECLINED
-}
 
-enum IndependenceStatus {
-  CLEARED
-  EXCEPTION
-}
 
 // Professional CA (SRS 33, 77). Acceptance/continuance, materiality, and
 // team are set up before fieldwork; conclusion + partner approval close it
@@ -225,13 +199,13 @@ model Engagement {
   serviceType String
   periodStart DateTime
   periodEnd   DateTime
-  status      EngagementStatus @default(PLANNED)
+  status      String @default("PLANNED")
 
-  acceptanceStatus   AcceptanceStatus    @default(PENDING)
-  materialityAmount  Decimal?            @db.Decimal(18, 2)
+  acceptanceStatus   String    @default("PENDING")
+  materialityAmount  Decimal?
   materialityBasis   String?
   scope              String?
-  independenceStatus IndependenceStatus?
+  independenceStatus String?
 
   createdById String
   createdBy   User   @relation("EngagementCreatedBy", fields: [createdById], references: [id])
@@ -259,12 +233,6 @@ model Engagement {
   @@map("engagements")
 }
 
-enum EngagementTeamRole {
-  PARTNER
-  MANAGER
-  SENIOR
-  STAFF
-}
 
 model EngagementTeamMember {
   id           String             @id @default(uuid())
@@ -272,18 +240,13 @@ model EngagementTeamMember {
   engagement   Engagement         @relation(fields: [engagementId], references: [id], onDelete: Cascade)
   userId       String
   user         User               @relation("EngagementTeamMembership", fields: [userId], references: [id])
-  role         EngagementTeamRole
+  role         String
   createdAt    DateTime           @default(now())
 
   @@unique([engagementId, userId])
   @@map("engagement_team_members")
 }
 
-enum IndependenceResolution {
-  PENDING
-  SAFEGUARDED
-  DECLINED_ENGAGEMENT
-}
 
 // Independence Engine (SRS 36). Any threat flag true => status EXCEPTION,
 // which must be resolved before... - this app doesn't hard-block other
@@ -305,12 +268,12 @@ model IndependenceCheck {
   advocacyThreat                Boolean            @default(false)
   managementParticipationThreat Boolean            @default(false)
   notes                         String?
-  status                        IndependenceStatus
+  status                        String
 
   checkedById String
   checkedBy   User   @relation("IndependenceCheckedBy", fields: [checkedById], references: [id])
 
-  resolution      IndependenceResolution @default(PENDING)
+  resolution      String @default("PENDING")
   resolutionNotes String?
   resolvedById    String?
   resolvedBy      User?                  @relation("IndependenceResolvedBy", fields: [resolvedById], references: [id])
@@ -321,42 +284,20 @@ model IndependenceCheck {
   @@map("independence_checks")
 }
 
-enum AuditRiskCategory {
-  INHERENT
-  CONTROL
-  DETECTION
-  FRAUD
-}
 
-enum RiskLevel {
-  LOW
-  MEDIUM
-  HIGH
-}
 
 // SRS 34 assertions, used to tag both risks and the procedures that
 // address them, and findings that relate to either.
-enum AuditAssertion {
-  EXISTENCE
-  COMPLETENESS
-  ACCURACY
-  CUTOFF
-  CLASSIFICATION
-  RIGHTS_AND_OBLIGATIONS
-  VALUATION
-  PRESENTATION
-  DISCLOSURE
-}
 
 model AuditRisk {
   id            String            @id @default(uuid())
   engagementId  String
   engagement    Engagement        @relation(fields: [engagementId], references: [id], onDelete: Cascade)
   description   String
-  category      AuditRiskCategory
-  assertion     AuditAssertion?
-  likelihood    RiskLevel
-  impact        RiskLevel
+  category      String
+  assertion     String?
+  likelihood    String
+  impact        String
   isSignificant Boolean           @default(false)
   response      String?
 
@@ -370,17 +311,7 @@ model AuditRisk {
   @@map("audit_risks")
 }
 
-enum AuditProcedureType {
-  CONTROL_TEST
-  SUBSTANTIVE_TEST
-  ANALYTICAL_PROCEDURE
-}
 
-enum AuditProcedureStatus {
-  NOT_STARTED
-  IN_PROGRESS
-  COMPLETED
-}
 
 model AuditProcedure {
   id            String               @id @default(uuid())
@@ -388,11 +319,11 @@ model AuditProcedure {
   engagement    Engagement           @relation(fields: [engagementId], references: [id], onDelete: Cascade)
   riskId        String?
   risk          AuditRisk?           @relation(fields: [riskId], references: [id])
-  assertion     AuditAssertion
-  procedureType AuditProcedureType
+  assertion     String
+  procedureType String
   description   String
   sampleSize    Int?
-  status        AuditProcedureStatus @default(NOT_STARTED)
+  status        String @default("NOT_STARTED")
 
   performedById String?
   performedBy   User?     @relation("ProcedurePerformedBy", fields: [performedById], references: [id])
@@ -407,15 +338,6 @@ model AuditProcedure {
   @@map("audit_procedures")
 }
 
-enum AuditEvidenceType {
-  DOCUMENT
-  CONFIRMATION
-  OBSERVATION
-  INQUIRY
-  RECALCULATION
-  EXTERNAL
-  INTERNAL
-}
 
 // Evidence chain (SRS 33, 41): links a piece of evidence (a Document when
 // there's a file, or just a description for an oral confirmation/
@@ -431,7 +353,7 @@ model AuditEvidence {
   documentId   String?
   document     Document?         @relation(fields: [documentId], references: [id])
   description  String
-  evidenceType AuditEvidenceType
+  evidenceType String
 
   obtainedById String
   obtainedBy   User     @relation("EvidenceObtainedBy", fields: [obtainedById], references: [id])
@@ -441,23 +363,8 @@ model AuditEvidence {
   @@map("audit_evidence")
 }
 
-enum AuditFindingType {
-  EXCEPTION
-  MISSTATEMENT
-  CONTROL_DEFICIENCY
-}
 
-enum AuditFindingSeverity {
-  LOW
-  MEDIUM
-  HIGH
-}
 
-enum AuditFindingStatus {
-  OPEN
-  RESOLVED
-  ACCEPTED
-}
 
 model AuditFinding {
   id                 String               @id @default(uuid())
@@ -467,14 +374,14 @@ model AuditFinding {
   procedure          AuditProcedure?      @relation(fields: [procedureId], references: [id])
   riskId             String?
   risk               AuditRisk?           @relation(fields: [riskId], references: [id])
-  type               AuditFindingType
-  assertion          AuditAssertion?
+  type               String
+  assertion          String?
   description        String
-  amount             Decimal?             @db.Decimal(18, 2)
-  severity           AuditFindingSeverity
+  amount             Decimal?
+  severity           String
   recommendation     String?
   managementResponse String?
-  status             AuditFindingStatus   @default(OPEN)
+  status             String   @default("OPEN")
 
   createdById String
   createdBy   User      @relation("FindingCreatedBy", fields: [createdById], references: [id])
@@ -486,11 +393,6 @@ model AuditFinding {
   @@map("audit_findings")
 }
 
-enum CompletionItemStatus {
-  PENDING
-  COMPLETE
-  NOT_APPLICABLE
-}
 
 // Completion checklist (SRS 33). EngagementsService seeds a standard set of
 // items (subsequent events, going concern, management representation
@@ -500,7 +402,7 @@ model EngagementCompletionItem {
   engagementId  String
   engagement    Engagement           @relation(fields: [engagementId], references: [id], onDelete: Cascade)
   item          String
-  status        CompletionItemStatus @default(PENDING)
+  status        String @default("PENDING")
   completedById String?
   completedBy   User?                @relation("CompletionItemCompletedBy", fields: [completedById], references: [id])
   completedAt   DateTime?
@@ -511,17 +413,7 @@ model EngagementCompletionItem {
   @@map("engagement_completion_items")
 }
 
-enum JudgmentStatus {
-  OPEN
-  DECIDED
-  APPROVED
-}
 
-enum JudgmentRisk {
-  LOW
-  MEDIUM
-  HIGH
-}
 
 // Professional Judgment Engine (SRS 35): Question -> Facts -> Applicable
 // standards -> Possible treatments -> Professional decision -> Approval.
@@ -542,10 +434,10 @@ model ProfessionalJudgmentCase {
   question            String
   facts               String
   applicableStandards String?
-  possibleTreatments  Json?
+  possibleTreatments  String?
   recommendation      String?
-  risk                JudgmentRisk   @default(MEDIUM)
-  status              JudgmentStatus @default(OPEN)
+  risk                String   @default("MEDIUM")
+  status              String @default("OPEN")
 
   decision    String?
   decidedById String?
@@ -567,27 +459,8 @@ model ProfessionalJudgmentCase {
 // Accounting core: chart of accounts, fiscal calendar (SRS 11-13)
 // ---------------------------------------------------------------------------
 
-enum AccountType {
-  ASSET
-  LIABILITY
-  EQUITY
-  REVENUE
-  EXPENSE
-}
 
-enum NormalBalance {
-  DEBIT
-  CREDIT
-}
 
-enum ControlAccountType {
-  ACCOUNTS_RECEIVABLE
-  ACCOUNTS_PAYABLE
-  BANK
-  CASH
-  VAT_OUTPUT
-  VAT_INPUT
-}
 
 model ChartOfAccount {
   id                     String              @id @default(uuid())
@@ -595,15 +468,15 @@ model ChartOfAccount {
   client                 Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
   code                   String
   name                   String
-  type                   AccountType
+  type                   String
   subtype                String?
   parentId               String?
   parent                 ChartOfAccount?     @relation("AccountHierarchy", fields: [parentId], references: [id])
   children               ChartOfAccount[]    @relation("AccountHierarchy")
-  normalBalance          NormalBalance
+  normalBalance          String
   currency               String              @default("SAR")
   isControlAccount       Boolean             @default(false)
-  controlAccountType     ControlAccountType?
+  controlAccountType     String?
   reconciliationRequired Boolean             @default(false)
   active                 Boolean             @default(true)
   createdAt              DateTime            @default(now())
@@ -633,11 +506,6 @@ model ChartOfAccount {
   @@map("chart_of_accounts")
 }
 
-enum PeriodStatus {
-  OPEN
-  LOCKED
-  CLOSED
-}
 
 model FiscalYear {
   id        String       @id @default(uuid())
@@ -646,7 +514,7 @@ model FiscalYear {
   name      String
   startDate DateTime
   endDate   DateTime
-  status    PeriodStatus @default(OPEN)
+  status    String @default("OPEN")
 
   periods AccountingPeriod[]
 
@@ -663,7 +531,7 @@ model AccountingPeriod {
   name         String
   startDate    DateTime
   endDate      DateTime
-  status       PeriodStatus @default(OPEN)
+  status       String @default("OPEN")
 
   journals Journal[]
 
@@ -675,20 +543,7 @@ model AccountingPeriod {
 // General ledger: journals & lines (SRS 11, 13, 65)
 // ---------------------------------------------------------------------------
 
-enum JournalSource {
-  MANUAL
-  SALES
-  PURCHASES
-  PAYMENT
-  RECEIPT
-  SYSTEM
-}
 
-enum JournalStatus {
-  DRAFT
-  POSTED
-  REVERSED
-}
 
 model Journal {
   id            String           @id @default(uuid())
@@ -698,11 +553,11 @@ model Journal {
   date          DateTime
   periodId      String
   period        AccountingPeriod @relation(fields: [periodId], references: [id])
-  source        JournalSource    @default(MANUAL)
+  source        String    @default("MANUAL")
   sourceType    String?
   sourceId      String?
   description   String?
-  status        JournalStatus    @default(DRAFT)
+  status        String    @default("DRAFT")
 
   createdById String
   createdBy   User      @relation("JournalCreatedBy", fields: [createdById], references: [id])
@@ -739,8 +594,8 @@ model JournalLine {
   journal           Journal            @relation(fields: [journalId], references: [id], onDelete: Cascade)
   accountId         String
   account           ChartOfAccount     @relation(fields: [accountId], references: [id])
-  debit             Decimal            @default(0) @db.Decimal(18, 2)
-  credit            Decimal            @default(0) @db.Decimal(18, 2)
+  debit             Decimal            @default(0)
+  credit            Decimal            @default(0)
   description       String?
   lineNumber        Int
   // Bank reconciliation (SRS 16, 42): set once this line has been matched
@@ -764,7 +619,7 @@ model Customer {
   email       String?
   phone       String?
   taxNumber   String?
-  creditLimit Decimal?        @db.Decimal(18, 2)
+  creditLimit Decimal?
   arAccountId String?
   arAccount   ChartOfAccount? @relation("CustomerArAccount", fields: [arAccountId], references: [id])
   active      Boolean         @default(true)
@@ -806,13 +661,6 @@ model Supplier {
 // Sales / AR (SRS 14, 18)
 // ---------------------------------------------------------------------------
 
-enum InvoiceStatus {
-  DRAFT
-  POSTED
-  PARTIALLY_PAID
-  PAID
-  VOID
-}
 
 model Invoice {
   id            String        @id @default(uuid())
@@ -824,11 +672,11 @@ model Invoice {
   date          DateTime
   dueDate       DateTime
   currency      String        @default("SAR")
-  status        InvoiceStatus @default(DRAFT)
-  subtotal      Decimal       @default(0) @db.Decimal(18, 2)
-  taxTotal      Decimal       @default(0) @db.Decimal(18, 2)
-  total         Decimal       @default(0) @db.Decimal(18, 2)
-  amountPaid    Decimal       @default(0) @db.Decimal(18, 2)
+  status        String @default("DRAFT")
+  subtotal      Decimal       @default(0)
+  taxTotal      Decimal       @default(0)
+  total         Decimal       @default(0)
+  amountPaid    Decimal       @default(0)
   notes         String?
   journalId     String?       @unique
   journal       Journal?      @relation(fields: [journalId], references: [id])
@@ -848,10 +696,10 @@ model InvoiceLine {
   invoiceId        String
   invoice          Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   description      String
-  quantity         Decimal        @default(1) @db.Decimal(18, 4)
-  unitPrice        Decimal        @db.Decimal(18, 2)
-  taxRate          Decimal        @default(0) @db.Decimal(5, 2)
-  lineTotal        Decimal        @db.Decimal(18, 2)
+  quantity         Decimal        @default(1)
+  unitPrice        Decimal
+  taxRate          Decimal        @default(0)
+  lineTotal        Decimal
   revenueAccountId String
   revenueAccount   ChartOfAccount @relation(fields: [revenueAccountId], references: [id])
   lineNumber       Int
@@ -863,13 +711,6 @@ model InvoiceLine {
 // Purchases / AP (SRS 15, 19)
 // ---------------------------------------------------------------------------
 
-enum BillStatus {
-  DRAFT
-  POSTED
-  PARTIALLY_PAID
-  PAID
-  VOID
-}
 
 model Bill {
   id         String     @id @default(uuid())
@@ -881,11 +722,11 @@ model Bill {
   date       DateTime
   dueDate    DateTime
   currency   String     @default("SAR")
-  status     BillStatus @default(DRAFT)
-  subtotal   Decimal    @default(0) @db.Decimal(18, 2)
-  taxTotal   Decimal    @default(0) @db.Decimal(18, 2)
-  total      Decimal    @default(0) @db.Decimal(18, 2)
-  amountPaid Decimal    @default(0) @db.Decimal(18, 2)
+  status     String @default("DRAFT")
+  subtotal   Decimal    @default(0)
+  taxTotal   Decimal    @default(0)
+  total      Decimal    @default(0)
+  amountPaid Decimal    @default(0)
   notes      String?
   journalId  String?    @unique
   journal    Journal?   @relation(fields: [journalId], references: [id])
@@ -904,10 +745,10 @@ model BillLine {
   billId           String
   bill             Bill           @relation(fields: [billId], references: [id], onDelete: Cascade)
   description      String
-  quantity         Decimal        @default(1) @db.Decimal(18, 4)
-  unitPrice        Decimal        @db.Decimal(18, 2)
-  taxRate          Decimal        @default(0) @db.Decimal(5, 2)
-  lineTotal        Decimal        @db.Decimal(18, 2)
+  quantity         Decimal        @default(1)
+  unitPrice        Decimal
+  taxRate          Decimal        @default(0)
+  lineTotal        Decimal
   expenseAccountId String
   expenseAccount   ChartOfAccount @relation(fields: [expenseAccountId], references: [id])
   lineNumber       Int
@@ -919,22 +760,18 @@ model BillLine {
 // Payments (SRS 14-17)
 // ---------------------------------------------------------------------------
 
-enum PaymentType {
-  RECEIPT
-  PAYMENT
-}
 
 model Payment {
   id            String         @id @default(uuid())
   clientId      String
   client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  type          PaymentType
+  type          String
   customerId    String?
   customer      Customer?      @relation(fields: [customerId], references: [id])
   supplierId    String?
   supplier      Supplier?      @relation(fields: [supplierId], references: [id])
   date          DateTime
-  amount        Decimal        @db.Decimal(18, 2)
+  amount        Decimal
   bankAccountId String
   bankAccount   ChartOfAccount @relation(fields: [bankAccountId], references: [id])
   method        String?
@@ -949,7 +786,7 @@ model Payment {
   // PaymentsService and WhtReturnService, which aggregates these by period.
   // whtCategoryCode snapshots the supplier's category at payment time, so a
   // later change to the supplier's category never rewrites history.
-  whtAmount           Decimal         @default(0) @db.Decimal(18, 2)
+  whtAmount           Decimal         @default(0)
   whtCategoryCode     String?
   whtPayableAccountId String?
   whtPayableAccount   ChartOfAccount? @relation("PaymentWhtPayableAccount", fields: [whtPayableAccountId], references: [id])
@@ -967,7 +804,7 @@ model PaymentAllocation {
   invoice   Invoice? @relation(fields: [invoiceId], references: [id])
   billId    String?
   bill      Bill?    @relation(fields: [billId], references: [id])
-  amount    Decimal  @db.Decimal(18, 2)
+  amount    Decimal
 
   @@map("payment_allocations")
 }
@@ -1014,8 +851,8 @@ model AuditLog {
   action     String
   entityType String
   entityId   String
-  before     Json?
-  after      Json?
+  before     String?
+  after      String?
   createdAt  DateTime @default(now())
 
   @@index([firmId, entityType, entityId])
@@ -1030,10 +867,6 @@ model AuditLog {
 // HR master data (shared by Expense Management and Payroll)
 // ---------------------------------------------------------------------------
 
-enum EmployeeStatus {
-  ACTIVE
-  TERMINATED
-}
 
 model Employee {
   id              String         @id @default(uuid())
@@ -1046,8 +879,8 @@ model Employee {
   jobTitle        String?
   hireDate        DateTime
   terminationDate DateTime?
-  baseSalary      Decimal        @default(0) @db.Decimal(18, 2)
-  status          EmployeeStatus @default(ACTIVE)
+  baseSalary      Decimal        @default(0)
+  status          String @default("ACTIVE")
   createdAt       DateTime       @default(now())
 
   expenseClaims ExpenseClaim[]
@@ -1061,14 +894,7 @@ model Employee {
 // Fixed Assets (SRS 21)
 // ---------------------------------------------------------------------------
 
-enum AssetStatus {
-  ACTIVE
-  DISPOSED
-}
 
-enum DepreciationMethod {
-  STRAIGHT_LINE
-}
 
 // Depreciation and disposal are computed/posted by FixedAssetsService, never
 // edited by hand - `accumulatedDepreciation` is a running total maintained
@@ -1082,12 +908,12 @@ model FixedAsset {
   name                    String
   category                String?
   acquisitionDate         DateTime
-  acquisitionCost         Decimal            @db.Decimal(18, 2)
-  salvageValue            Decimal            @default(0) @db.Decimal(18, 2)
+  acquisitionCost         Decimal
+  salvageValue            Decimal            @default(0)
   usefulLifeMonths        Int
-  depreciationMethod      DepreciationMethod @default(STRAIGHT_LINE)
-  accumulatedDepreciation Decimal            @default(0) @db.Decimal(18, 2)
-  status                  AssetStatus        @default(ACTIVE)
+  depreciationMethod      String @default("STRAIGHT_LINE")
+  accumulatedDepreciation Decimal            @default(0)
+  status                  String        @default("ACTIVE")
 
   assetAccountId                   String
   assetAccount                     ChartOfAccount @relation("AssetAssetAccount", fields: [assetAccountId], references: [id])
@@ -1100,7 +926,7 @@ model FixedAsset {
   acquisitionJournal   Journal? @relation("FixedAssetAcquisitionJournal", fields: [acquisitionJournalId], references: [id])
 
   disposalDate      DateTime?
-  disposalProceeds  Decimal?  @db.Decimal(18, 2)
+  disposalProceeds  Decimal?
   disposalJournalId String?   @unique
   disposalJournal   Journal?  @relation("FixedAssetDisposalJournal", fields: [disposalJournalId], references: [id])
 
@@ -1112,10 +938,6 @@ model FixedAsset {
   @@map("fixed_assets")
 }
 
-enum DepreciationRunStatus {
-  DRAFT
-  POSTED
-}
 
 // One run covers every ACTIVE asset for a client for one period, posting a
 // single journal (SRS 21, 70): Debit each asset's depreciation expense
@@ -1126,8 +948,8 @@ model DepreciationRun {
   client      Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
   periodLabel String
   runDate     DateTime
-  status      DepreciationRunStatus @default(DRAFT)
-  totalAmount Decimal               @default(0) @db.Decimal(18, 2)
+  status      String @default("DRAFT")
+  totalAmount Decimal               @default(0)
   journalId   String?               @unique
   journal     Journal?              @relation(fields: [journalId], references: [id])
   createdAt   DateTime              @default(now())
@@ -1144,7 +966,7 @@ model DepreciationEntry {
   run     DepreciationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   assetId String
   asset   FixedAsset      @relation(fields: [assetId], references: [id])
-  amount  Decimal         @db.Decimal(18, 2)
+  amount  Decimal
 
   @@unique([runId, assetId])
   @@map("depreciation_entries")
@@ -1198,18 +1020,13 @@ model ProductStock {
   product        Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
   warehouseId    String
   warehouse      Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  quantityOnHand Decimal   @default(0) @db.Decimal(18, 4)
-  averageCost    Decimal   @default(0) @db.Decimal(18, 4)
+  quantityOnHand Decimal   @default(0)
+  averageCost    Decimal   @default(0)
 
   @@unique([productId, warehouseId])
   @@map("product_stock")
 }
 
-enum StockMovementType {
-  RECEIPT
-  ISSUE
-  ADJUSTMENT
-}
 
 // Every movement posts its own journal (SRS 20, 74): a RECEIPT debits
 // inventory (using its own unit cost, which updates the weighted average);
@@ -1224,11 +1041,11 @@ model StockMovement {
   product     Product           @relation(fields: [productId], references: [id])
   warehouseId String
   warehouse   Warehouse         @relation(fields: [warehouseId], references: [id])
-  type        StockMovementType
+  type        String
   date        DateTime
-  quantity    Decimal           @db.Decimal(18, 4)
-  unitCost    Decimal           @db.Decimal(18, 4)
-  totalCost   Decimal           @db.Decimal(18, 2)
+  quantity    Decimal
+  unitCost    Decimal
+  totalCost   Decimal
   reference   String?
   journalId   String?           @unique
   journal     Journal?          @relation(fields: [journalId], references: [id])
@@ -1241,13 +1058,6 @@ model StockMovement {
 // Expense Management (SRS 23)
 // ---------------------------------------------------------------------------
 
-enum ExpenseClaimStatus {
-  DRAFT
-  SUBMITTED
-  APPROVED
-  REJECTED
-  POSTED
-}
 
 // A claim is reimbursed directly on posting (Debit each line's category
 // account, Credit the chosen bank/cash account) - there is no employee
@@ -1260,8 +1070,8 @@ model ExpenseClaim {
   employee         Employee           @relation(fields: [employeeId], references: [id])
   claimNumber      String
   date             DateTime
-  status           ExpenseClaimStatus @default(DRAFT)
-  totalAmount      Decimal            @default(0) @db.Decimal(18, 2)
+  status           String @default("DRAFT")
+  totalAmount      Decimal            @default(0)
   paymentAccountId String?
   paymentAccount   ChartOfAccount?    @relation("ExpenseClaimPaymentAccount", fields: [paymentAccountId], references: [id])
   journalId        String?            @unique
@@ -1280,7 +1090,7 @@ model ExpenseClaimLine {
   claim             ExpenseClaim   @relation(fields: [claimId], references: [id], onDelete: Cascade)
   description       String
   date              DateTime
-  amount            Decimal        @db.Decimal(18, 2)
+  amount            Decimal
   categoryAccountId String
   categoryAccount   ChartOfAccount @relation(fields: [categoryAccountId], references: [id])
   lineNumber        Int
@@ -1292,10 +1102,6 @@ model ExpenseClaimLine {
 // Payroll (SRS 22)
 // ---------------------------------------------------------------------------
 
-enum PayrollRunStatus {
-  DRAFT
-  POSTED
-}
 
 // Posts one journal per run (SRS 22, 70): Debit Salaries & Wages expense
 // for total gross pay, Credit Salaries Payable for total net pay, Credit a
@@ -1308,10 +1114,10 @@ model PayrollRun {
   client          Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
   periodLabel     String
   payDate         DateTime
-  status          PayrollRunStatus @default(DRAFT)
-  totalGross      Decimal          @default(0) @db.Decimal(18, 2)
-  totalDeductions Decimal          @default(0) @db.Decimal(18, 2)
-  totalNet        Decimal          @default(0) @db.Decimal(18, 2)
+  status          String @default("DRAFT")
+  totalGross      Decimal          @default(0)
+  totalDeductions Decimal          @default(0)
+  totalNet        Decimal          @default(0)
   journalId       String?          @unique
   journal         Journal?         @relation(fields: [journalId], references: [id])
   createdAt       DateTime         @default(now())
@@ -1328,11 +1134,11 @@ model Payslip {
   payrollRun   PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
   employeeId   String
   employee     Employee   @relation(fields: [employeeId], references: [id])
-  basicSalary  Decimal    @db.Decimal(18, 2)
-  allowances   Decimal    @default(0) @db.Decimal(18, 2)
-  deductions   Decimal    @default(0) @db.Decimal(18, 2)
-  grossPay     Decimal    @db.Decimal(18, 2)
-  netPay       Decimal    @db.Decimal(18, 2)
+  basicSalary  Decimal
+  allowances   Decimal    @default(0)
+  deductions   Decimal    @default(0)
+  grossPay     Decimal
+  netPay       Decimal
 
   @@unique([payrollRunId, employeeId])
   @@map("payslips")
@@ -1358,11 +1164,6 @@ model BankStatementImport {
   @@map("bank_statement_imports")
 }
 
-enum BankStatementLineStatus {
-  UNMATCHED
-  MATCHED
-  IGNORED
-}
 
 model BankStatementLine {
   id          String                  @id @default(uuid())
@@ -1371,9 +1172,9 @@ model BankStatementLine {
   date        DateTime
   description String
   // Signed: positive = money in (deposit), negative = money out (withdrawal).
-  amount      Decimal                 @db.Decimal(18, 2)
+  amount      Decimal
   reference   String?
-  status      BankStatementLineStatus @default(UNMATCHED)
+  status      String @default("UNMATCHED")
 
   matchedJournalLineId String?      @unique
   matchedJournalLine   JournalLine? @relation(fields: [matchedJournalLineId], references: [id])
@@ -1381,10 +1182,6 @@ model BankStatementLine {
   @@map("bank_statement_lines")
 }
 
-enum BankReconciliationStatus {
-  IN_PROGRESS
-  COMPLETED
-}
 
 // A reconciliation session snapshots the statement's ending balance so the
 // UI can show book-vs-statement variance as matching progresses; completing
@@ -1397,8 +1194,8 @@ model BankReconciliation {
   bankAccountId          String
   bankAccount            ChartOfAccount           @relation(fields: [bankAccountId], references: [id])
   statementDate          DateTime
-  statementEndingBalance Decimal                  @db.Decimal(18, 2)
-  status                 BankReconciliationStatus @default(IN_PROGRESS)
+  statementEndingBalance Decimal
+  status                 String @default("IN_PROGRESS")
   completedById          String?
   completedAt            DateTime?
   createdAt              DateTime                 @default(now())
@@ -1412,20 +1209,15 @@ model BankReconciliation {
 // implemented - see docs/ARCHITECTURE.md.
 // ---------------------------------------------------------------------------
 
-enum DocumentExtractionStatus {
-  PENDING
-  COMPLETED
-  FAILED
-}
 
 model DocumentExtraction {
   id            String                   @id @default(uuid())
   documentId    String                   @unique
   document      Document                 @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  status        DocumentExtractionStatus @default(PENDING)
+  status        String @default("PENDING")
   extractedText String?
-  fields        Json?
-  confidence    Decimal?                 @db.Decimal(5, 2)
+  fields        String?
+  confidence    Decimal?
   processedAt   DateTime?
   createdAt     DateTime                 @default(now())
 
@@ -1446,21 +1238,16 @@ model DocumentExtraction {
 // about any one firm's client.
 // ---------------------------------------------------------------------------
 
-enum RuleType {
-  VAT_RATE
-  WHT_RATE
-  ZAKAT_RATE
-}
 
 model RegulatoryRule {
   id            String    @id @default(uuid())
   jurisdiction  String // ISO country code, e.g. "SA"
   authority     String // e.g. "ZATCA"
-  ruleType      RuleType
+  ruleType      String
   code          String // e.g. "STANDARD", "ZERO_RATED" (VAT); "SERVICES", "ROYALTIES" (WHT)
   name          String
   description   String?
-  rate          Decimal   @db.Decimal(7, 4) // percentage, e.g. 15.0000
+  rate          Decimal // percentage, e.g. 15.0000
   effectiveFrom DateTime
   effectiveTo   DateTime?
   createdAt     DateTime  @default(now())
@@ -1475,17 +1262,12 @@ model RegulatoryRule {
 // deadlines.
 // ---------------------------------------------------------------------------
 
-enum TaxPeriodType {
-  VAT
-  WHT
-  ZAKAT
-}
 
 model TaxPeriod {
   id         String        @id @default(uuid())
   clientId   String
   client     Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  periodType TaxPeriodType
+  periodType String
   name       String
   startDate  DateTime
   endDate    DateTime
@@ -1504,10 +1286,6 @@ model TaxPeriod {
 // VAT Returns (SRS 25-26)
 // ---------------------------------------------------------------------------
 
-enum TaxReturnStatus {
-  DRAFT
-  FILED
-}
 
 model VatReturn {
   id               String          @id @default(uuid())
@@ -1515,10 +1293,10 @@ model VatReturn {
   client           Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   taxPeriodId      String
   taxPeriod        TaxPeriod       @relation(fields: [taxPeriodId], references: [id], onDelete: Cascade)
-  outputVat        Decimal         @default(0) @db.Decimal(18, 2)
-  inputVat         Decimal         @default(0) @db.Decimal(18, 2)
-  netVatDue        Decimal         @default(0) @db.Decimal(18, 2) // positive = payable, negative = refundable
-  status           TaxReturnStatus @default(DRAFT)
+  outputVat        Decimal         @default(0)
+  inputVat         Decimal         @default(0)
+  netVatDue        Decimal         @default(0) // positive = payable, negative = refundable
+  status           String @default("DRAFT")
   payableAccountId String?
   payableAccount   ChartOfAccount? @relation("VatReturnPayableAccount", fields: [payableAccountId], references: [id])
   journalId        String?         @unique
@@ -1546,9 +1324,9 @@ model WhtReturn {
   client      Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   taxPeriodId String
   taxPeriod   TaxPeriod       @relation(fields: [taxPeriodId], references: [id], onDelete: Cascade)
-  totalWht    Decimal         @default(0) @db.Decimal(18, 2)
-  breakdown   Json // [{ categoryCode, categoryName, amount }]
-  status      TaxReturnStatus @default(DRAFT)
+  totalWht    Decimal         @default(0)
+  breakdown   String // JSON: [{ categoryCode, categoryName, amount }]
+  status      String @default("DRAFT")
   filedById   String?
   filedAt     DateTime?
   createdAt   DateTime        @default(now())
@@ -1571,14 +1349,14 @@ model ZakatReturn {
   client               Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   taxPeriodId          String
   taxPeriod            TaxPeriod       @relation(fields: [taxPeriodId], references: [id], onDelete: Cascade)
-  equityAmount         Decimal         @default(0) @db.Decimal(18, 2)
-  netFixedAssetsAmount Decimal         @default(0) @db.Decimal(18, 2)
-  additionsTotal       Decimal         @default(0) @db.Decimal(18, 2)
-  deductionsTotal      Decimal         @default(0) @db.Decimal(18, 2)
-  zakatBase            Decimal         @default(0) @db.Decimal(18, 2)
-  zakatRate            Decimal         @default(0) @db.Decimal(7, 4)
-  zakatDue             Decimal         @default(0) @db.Decimal(18, 2)
-  status               TaxReturnStatus @default(DRAFT)
+  equityAmount         Decimal         @default(0)
+  netFixedAssetsAmount Decimal         @default(0)
+  additionsTotal       Decimal         @default(0)
+  deductionsTotal      Decimal         @default(0)
+  zakatBase            Decimal         @default(0)
+  zakatRate            Decimal         @default(0)
+  zakatDue             Decimal         @default(0)
+  status               String @default("DRAFT")
   expenseAccountId     String?
   expenseAccount       ChartOfAccount? @relation("ZakatReturnExpenseAccount", fields: [expenseAccountId], references: [id])
   payableAccountId     String?
@@ -1595,18 +1373,14 @@ model ZakatReturn {
   @@map("zakat_returns")
 }
 
-enum ZakatAdjustmentType {
-  ADDITION
-  DEDUCTION
-}
 
 model ZakatAdjustment {
   id            String              @id @default(uuid())
   zakatReturnId String
   zakatReturn   ZakatReturn         @relation(fields: [zakatReturnId], references: [id], onDelete: Cascade)
   description   String
-  type          ZakatAdjustmentType
-  amount        Decimal             @db.Decimal(18, 2)
+  type          String
+  amount        Decimal
   createdAt     DateTime            @default(now())
 
   @@map("zakat_adjustments")
@@ -1636,10 +1410,6 @@ model EInvoiceRecord {
 // Compliance Calendar (SRS 47)
 // ---------------------------------------------------------------------------
 
-enum ComplianceDeadlineStatus {
-  PENDING
-  COMPLETED
-}
 
 model ComplianceDeadline {
   id                String                   @id @default(uuid())
@@ -1648,7 +1418,7 @@ model ComplianceDeadline {
   category          String // e.g. "VAT_RETURN", "WHT_RETURN", "ZAKAT_RETURN", "CUSTOM"
   title             String
   dueDate           DateTime
-  status            ComplianceDeadlineStatus @default(PENDING)
+  status            String @default("PENDING")
   relatedEntityType String?
   relatedEntityId   String?
   notes             String?
@@ -1677,51 +1447,20 @@ model ComplianceDeadline {
 // color coding.
 // ---------------------------------------------------------------------------
 
-enum AiAgentType {
-  ACCOUNTING
-  TAX
-  AUDIT
-  RECONCILIATION
-  REPORTING
-  DOCUMENT
-  COMPLIANCE
-  FINANCIAL_ANALYST
-}
 
-enum AiRecommendedAction {
-  NO_ACTION_NEEDED
-  ESCALATE_TO_REVIEW
-  AUTO_POST_PERMITTED
-}
 
 // Mirrors SRS 68's Professional Review Queue emoji tiers, in the order
 // they're commonly listed there (not a severity ranking):
 // PROFESSIONAL_JUDGMENT=red, CA_REVIEW=orange, ACCOUNTANT_REVIEW=yellow,
 // CLIENT_CLARIFICATION=blue, AUTO_VALIDATED=green.
-enum AiReviewSeverity {
-  PROFESSIONAL_JUDGMENT
-  CA_REVIEW
-  ACCOUNTANT_REVIEW
-  CLIENT_CLARIFICATION
-  AUTO_VALIDATED
-}
 
-enum AiRunStatus {
-  OPEN
-  REVIEWED
-}
 
-enum AiReviewDecision {
-  APPROVED
-  REJECTED
-  OVERRIDDEN
-}
 
 model AiAgentRun {
   id         String      @id @default(uuid())
   clientId   String
   client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  agentType  AiAgentType
+  agentType  String
   // Polymorphic pointer to the record the finding is about (a Journal, a
   // Supplier, an AuditFinding, ...) - deliberately not a typed FK since it
   // varies by agent; entityId is null for a client-wide finding with no
@@ -1739,18 +1478,18 @@ model AiAgentRun {
   dataCompleteness Int // 0-100
   evidenceQuality  String
   ruleCertainty    String // e.g. "Deterministic threshold" vs "Heuristic pattern match"
-  risk             RiskLevel
-  materiality      Decimal? @db.Decimal(18, 2)
+  risk             String
+  materiality      Decimal?
 
-  recommendedAction   AiRecommendedAction
-  reviewSeverity      AiReviewSeverity
+  recommendedAction   String
+  reviewSeverity      String
   humanReviewRequired Boolean             @default(true)
 
-  status         AiRunStatus       @default(OPEN)
+  status         String       @default("OPEN")
   reviewedById   String?
   reviewedBy     User?             @relation("AiAgentRunReviewedBy", fields: [reviewedById], references: [id])
   reviewedAt     DateTime?
-  reviewDecision AiReviewDecision?
+  reviewDecision String?
   reviewNotes    String?
 
   createdAt DateTime @default(now())

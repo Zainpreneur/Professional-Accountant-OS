@@ -13,3 +13,8 @@ pnpm-lock.yaml.bak
 packages/db/generated/
 .pgdata/
 *.log
+# SQLite databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

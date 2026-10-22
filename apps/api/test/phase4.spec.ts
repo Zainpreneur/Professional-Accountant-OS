@@ -285,7 +285,7 @@ describe("JudgmentService", () => {
       question: "Capitalize or expense the ERP license?",
       facts: "3-year license, SAR 300,000.",
       applicableStandards: "IAS 38",
-      possibleTreatments: [{ treatment: "Capitalize" }, { treatment: "Expense" }],
+      possibleTreatments: JSON.stringify([{ treatment: "Capitalize" }, { treatment: "Expense" }]),
       risk: "MEDIUM",
     });
     expect(created.status).toBe("OPEN");

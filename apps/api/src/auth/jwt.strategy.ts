@@ -35,7 +35,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const clientPermissions: Record<string, Set<PermissionCode>> = {};
 
     for (const ur of user.userRoles) {
-      const perms = ur.role.permissions as PermissionCode[];
+      // SQLite stores permissions as a JSON string (no array columns).
+      const perms: PermissionCode[] = ur.role.permissions ? JSON.parse(ur.role.permissions) : [];
       if (ur.clientId === null) {
         perms.forEach((p) => firmWidePermissions.add(p));
       } else {

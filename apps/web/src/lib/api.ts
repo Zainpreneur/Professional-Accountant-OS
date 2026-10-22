@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+export const API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
 
 export class ApiError extends Error {
   constructor(
@@ -6,18 +6,21 @@ export class ApiError extends Error {
     public status: number,
   ) {
     super(message);
+    this.name = "ApiError";
   }
 }
 
 function getToken(): string | null {
-  if (typeof window === "undefined") return null;
   return window.localStorage.getItem("accountant_os_token");
 }
 
 export function setToken(token: string | null) {
-  if (typeof window === "undefined") return;
   if (token) window.localStorage.setItem("accountant_os_token", token);
   else window.localStorage.removeItem("accountant_os_token");
+}
+
+export function getStoredToken(): string | null {
+  return getToken();
 }
 
 // Thin fetch wrapper for the Professional Accountant OS API (apps/api).
@@ -46,15 +49,39 @@ export async function api<T = unknown>(
   const data = isJson ? await res.json().catch(() => undefined) : undefined;
 
   if (!res.ok) {
-    const message = (data && (data.message as string)) || res.statusText || "Request failed";
-    throw new ApiError(Array.isArray(message) ? message.join(", ") : message, res.status);
+    if (res.status === 401 && getToken()) {
+      setToken(null);
+      if (!window.location.pathname.startsWith("/login")) window.location.assign("/login");
+    }
+    const raw = data && (data.message as unknown);
+    const message = Array.isArray(raw)
+      ? raw.join(", ")
+      : typeof raw === "string" && raw.length > 0
+        ? raw
+        : res.statusText || "Request failed";
+    throw new ApiError(message, res.status);
   }
 
   return data as T;
 }
 
-export function uploadUrl(clientId: string, documentId: string) {
+export function downloadUrl(clientId: string, documentId: string) {
   return `${API_URL}/api/v1/clients/${clientId}/documents/${documentId}/download`;
+}
+
+export async function downloadWithAuth(url: string, fileName?: string) {
+  const token = getToken();
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) throw new ApiError("Download failed", res.status);
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = fileName ?? "document";
+  link.click();
+  URL.revokeObjectURL(objectUrl);
 }
 
 export async function uploadDocument(clientId: string, file: File, category?: string) {

@@ -29,8 +29,13 @@ async function main() {
   for (const [name, def] of Object.entries(SYSTEM_ROLES)) {
     await prisma.role.upsert({
       where: { firmId_name: { firmId: firm.id, name } },
-      update: { permissions: def.permissions, description: def.description },
-      create: { firmId: firm.id, name, description: def.description, permissions: def.permissions },
+      update: { permissions: JSON.stringify(def.permissions), description: def.description },
+      create: {
+        firmId: firm.id,
+        name,
+        description: def.description,
+        permissions: JSON.stringify(def.permissions),
+      },
     });
   }
   const ownerRole = await prisma.role.findUniqueOrThrow({ where: { firmId_name: { firmId: firm.id, name: "FIRM_OWNER" } } });

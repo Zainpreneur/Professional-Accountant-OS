@@ -9,6 +9,21 @@ function round2(n: number) {
   return Math.round(n * 100) / 100;
 }
 
+type WhtBreakdown = Array<{ categoryCode: string; amount: number }>;
+
+// SQLite has no Json column type, so breakdown is stored as JSON text.
+function parseBreakdown(value: string): WhtBreakdown {
+  try {
+    return JSON.parse(value) as WhtBreakdown;
+  } catch {
+    return [];
+  }
+}
+
+function withBreakdown<T extends { breakdown: string }>(row: T) {
+  return { ...row, breakdown: parseBreakdown(row.breakdown) };
+}
+
 // Withholding Tax (SRS 28). WHT itself is accrued at Payment time (see
 // PaymentsService); this service provides the pre-payment calculation
 // preview (via the regulatory rules engine, using the client's own
@@ -46,8 +61,13 @@ export class WhtService {
     };
   }
 
-  list(clientId: string) {
-    return this.prisma.whtReturn.findMany({ where: { clientId }, include: { taxPeriod: true }, orderBy: { createdAt: "desc" } });
+  async list(clientId: string) {
+    const rows = await this.prisma.whtReturn.findMany({
+      where: { clientId },
+      include: { taxPeriod: true },
+      orderBy: { createdAt: "desc" },
+    });
+    return rows.map(withBreakdown);
   }
 
   async generate(actor: RequestUser, clientId: string, dto: GenerateWhtReturnDto) {
@@ -76,7 +96,7 @@ export class WhtService {
     const breakdown = [...byCategory.entries()].map(([categoryCode, amount]) => ({ categoryCode, amount }));
 
     const whtReturn = await this.prisma.whtReturn.create({
-      data: { clientId, taxPeriodId: dto.taxPeriodId, totalWht, breakdown, status: "DRAFT" },
+      data: { clientId, taxPeriodId: dto.taxPeriodId, totalWht, breakdown: JSON.stringify(breakdown), status: "DRAFT" },
     });
 
     await this.audit.log({
@@ -88,7 +108,7 @@ export class WhtService {
       entityId: whtReturn.id,
       after: whtReturn,
     });
-    return whtReturn;
+    return withBreakdown(whtReturn);
   }
 
   async file(actor: RequestUser, clientId: string, whtReturnId: string) {
@@ -109,6 +129,6 @@ export class WhtService {
       entityType: "WhtReturn",
       entityId: whtReturnId,
     });
-    return filed;
+    return withBreakdown(filed);
   }
 }

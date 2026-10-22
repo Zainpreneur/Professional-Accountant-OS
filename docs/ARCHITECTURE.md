@@ -19,12 +19,13 @@ every module the full SRS describes - see each phase's section below and
 | Layer | Choice | Why |
 |---|---|---|
 | API | NestJS + TypeScript | Module/DI structure maps directly onto the SRS's domain modules (accounting, tax, audit, ...); mainstream, well-documented. |
-| Database | PostgreSQL + Prisma | SRS §64 calls for PostgreSQL with strong relational integrity, UUIDs, constraints. Prisma gives type-safe queries and migrations. |
+| Database | SQLite + Prisma | Zero-install local database (a single file; no Postgres server or Docker). Prisma gives type-safe queries and migrations. Trade-offs vs Postgres: no native Json/enum/array columns and no fixed-point decimal type. |
 | Auth | JWT (passport-jwt) + bcrypt | Stateless, simple to run anywhere. |
-| Frontend | Next.js (App Router) + React | SRS §85 wants a desktop-optimized firm workspace and a responsive client portal from one codebase. |
+| Frontend | React 18 + Vite + Tailwind CSS | SRS §85 wants a desktop-optimized firm workspace and a responsive client portal from one codebase. Vite keeps local starts fast and Tailwind provides a consistent, accessible design system. |
 | Monorepo | pnpm workspaces | `apps/api`, `apps/web`, `packages/db` share the Prisma-generated types. |
 
-No infra beyond Postgres is required to run this locally.
+No external database service is required to run this locally - SQLite is a
+single file created on first migrate.
 
 ## What's implemented
 
@@ -63,7 +64,7 @@ make it trustworthy:
   ledger (with running balance), AR aging, AP aging - all computed live
   from posted journal lines, never from a cached/derived table.
 - **Documents** (SRS §§40-41): upload/list/download with metadata in
-  Postgres and files on local disk (swappable for object storage later
+  SQLite and files on local disk (swappable for object storage later
   without touching callers - see `DocumentsService`).
 - **Audit trail** (SRS §56): every mutating action in every service above
   writes an `AuditLog` row (who/what/when/before/after), queryable via
@@ -565,8 +566,8 @@ apps/
       business-compiler/ chart-of-accounts composition (category + jurisdiction
                           templates); compile.ts is plain functions shared with
                           packages/db/prisma/seed.ts
-    test/             vitest integration tests against a real Postgres DB
-  web/              Next.js frontend (firm workspace)
+    test/             vitest integration tests against a real SQLite DB
+  web/              React + Vite + Tailwind frontend (firm workspace)
 packages/
   db/               Prisma schema, migrations, seed script
 docs/
@@ -576,16 +577,13 @@ docs/
 
 ## Running it locally
 
-Requires Node 20+, pnpm, and a PostgreSQL server (via Docker if available,
-otherwise any local Postgres 16 instance).
+Requires Node 20+ and pnpm. No database server or Docker is needed - SQLite
+lives in a single file at `packages/db/prisma/dev.db`, created on first
+migrate.
 
 ```bash
 pnpm install
-cp .env.example .env               # adjust DATABASE_URL if not using the default
-
-# Start Postgres - either:
-docker compose up -d               # if Docker is available, or
-#   point DATABASE_URL in .env at any Postgres 16 instance you already have running
+# Optional: copy .env.example to .env; the SQLite defaults work as-is.
 
 pnpm --filter @accountant-os/db exec prisma migrate deploy
 pnpm db:seed                       # creates a demo firm + client
@@ -596,11 +594,10 @@ pnpm dev:web                       # http://localhost:3000
 ```
 
 Running the integration test suite (uses `apps/api/.env.test` - point it at
-a separate database, e.g. `accountant_os_test`, and run migrations against
-it once):
+a separate SQLite file and run migrations against it once):
 
 ```bash
-DATABASE_URL=<test-db-url> pnpm --filter @accountant-os/db exec prisma migrate deploy
+DATABASE_URL="file:./test.db" pnpm --filter @accountant-os/db exec prisma migrate deploy
 pnpm --filter @accountant-os/api test
 ```
 
